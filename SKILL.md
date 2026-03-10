@@ -204,12 +204,12 @@ agent-title <name>
 ```
 
 ### "dm fails silently"
-Check agent state:
+Check agent state by looking at the FIRST word of the status bar:
 ```bash
-tmux capture-pane -t <pane> -p | tail -1
+tmux capture-pane -t <pane> -p | tail -1 | awk '{print $1}'
 ```
-- `agent` = idle, should receive
-- `context:` = busy, will receive after interrupt
+- `agent` = idle (full status bar showing), should receive
+- `context:` = busy (ONLY context showing, short status), will receive after interrupt  
 - `shell` = shell mode, popup used
 
 ---
@@ -220,11 +220,11 @@ tmux capture-pane -t <pane> -p | tail -1
 
 The `dm` script automatically detects target agent state:
 
-| Status Bar | State | Delivery |
-|------------|-------|----------|
-| `agent` | Agent mode, idle | Direct interrupt |
-| `context:` | Agent mode, busy | Interrupt + message |
-| `shell` | Shell mode | Popup overlay |
+| First Word | Meaning | Status Bar Appearance | Delivery |
+|------------|---------|----------------------|----------|
+| `agent` | Agent mode, idle | Full line: `agent (kimi...) @: mention files...` | Direct interrupt |
+| `context:` | Agent mode, busy | **ONLY** `context: 41.5%...` (short) | Interrupt + message |
+| `shell` | Shell mode | `shell ctrl-x...` | Popup overlay |
 
 ### File Locking
 
