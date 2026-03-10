@@ -1,0 +1,212 @@
+#!/bin/bash
+#
+# agent-onboard - Setup multi-agent environment
+# Handles both: already in tmux (add panes) or not in tmux (provide instructions)
+#
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Get project name from directory
+PROJECT_DIR="${PWD##*/}"
+PROJECT_NAME="${PROJECT_DIR//[^a-zA-Z0-9]/-}"
+
+# Check if in tmux
+in_tmux() {
+    [ -n "$TMUX" ]
+}
+
+# Show not-in-tmux instructions
+not_in_tmux_instructions() {
+    echo -e "${RED}=== Not in tmux ===${NC}"
+    echo ""
+    echo "You are currently NOT in a tmux session."
+    echo "To use multi-agent messaging, you need to:"
+    echo ""
+    echo -e "${YELLOW}Option A: Exit and restart with tmux${NC}"
+    echo ""
+    echo "1. Note your current session ID (from status bar)"
+    echo "2. Exit this agent (Ctrl-D or type 'exit')"
+    echo "3. From your shell, run:"
+    echo ""
+    echo -e "   ${GREEN}cd '$PWD'${NC}"
+    echo -e "   ${GREEN}tmux new -s $PROJECT_NAME${NC}"
+    echo -e "   ${GREEN}kimi --session <your-session-id> -w .${NC}"
+    echo ""
+    echo "4. Then run: agent-onboard"
+    echo ""
+    echo -e "${YELLOW}Option B: Use the setup script${NC}"
+    echo ""
+    echo "Save this command and run from shell:"
+    echo ""
+    echo -e "   ${GREEN}.agents/bin/agent-setup-multi $PROJECT_NAME${NC}"
+    echo ""
+    echo "This will:"
+    echo "  - Create tmux session"
+    echo "  - Start your main agent (new session)"
+    echo "  - Create additional agent panes"
+    echo ""
+}
+
+# Get session name if in tmux
+get_tmux_session() {
+    tmux display-message -p '#S'
+}
+
+# List current panes
+list_panes() {
+    echo -e "${BLUE}Current panes in this window:${NC}"
+    tmux list-panes -F '  [#{pane_index}] #{pane_title} (#{pane_active}active)' | sed 's/1active/active/;s/0active//'
+}
+
+# Interactive agent setup
+setup_agents() {
+    echo ""
+    echo -e "${GREEN}=== Multi-Agent Setup ===${NC}"
+    echo ""
+    echo "Project: $PROJECT_NAME"
+    echo "Tmux session: $(get_tmux_session)"
+    echo ""
+    
+    list_panes
+    echo ""
+    
+    # Check if setup already exists
+    if [ -d ".agents/queue" ]; then
+        echo -e "${YELLOW}Messaging infrastructure already exists.${NC}"
+        read -p "Reconfigure? [y/N]: " reconfig
+        if [[ ! "$reconfig" =~ ^[Yy]$ ]]; then
+            echo "Existing setup kept."
+            return
+        fi
+    fi
+    
+    # Create directory structure
+    echo "Creating directory structure..."
+    mkdir -p .agents/{queue/{todo,doing,done,completed,.locks},handoffs,bin}
+    echo -e "  ${GREEN}✓${NC} .agents/queue/"
+    echo -e "  ${GREEN}✓${NC} .agents/handoffs/"
+    
+    # Ask about adding agents
+    echo ""
+    read -p "Add additional agent panes? [Y/n]: " add_panes
+    if [[ "$add_panes" =~ ^[Nn]$ ]]; then
+        echo "Setup complete (single agent mode)."
+        echo ""
+        echo "Commands available:"
+        echo "  agent-task create <title>    - Create task for self"
+        echo "  agent-task list              - View tasks"
+        return
+    fi
+    
+    # How many agents
+    echo ""
+    read -p "How many additional agents? [2]: " num_agents
+    num_agents="${num_agents:-2}"
+    
+    # Get agent details
+    declare -a AGENT_NAMES
+    declare -a AGENT_SCOPES
+    
+    for ((i=1; i<=num_agents; i++)); do
+        echo ""
+        echo -e "${BLUE}Agent $i:${NC}"
+        read -p "  Name (e.g., 'architect', 'tester') [agent-$i]: " name
+        name="${name:-agent-$i}"
+        read -p "  Scope/description: " scope
+        
+        AGENT_NAMES[$i]="$name"
+        AGENT_SCOPES[$i]="${scope:-General purpose}"
+    done
+    
+    # Create the panes and start agents
+    echo ""
+    echo "Creating agent panes..."
+    
+    for ((i=1; i<=num_agents; i++)); do
+        name="${AGENT_NAMES[$i]}"
+        scope="${AGENT_SCOPES[$i]}"
+        session_name="$name-$PROJECT_NAME"
+        
+        echo ""
+        echo -e "${BLUE}Setting up $name...${NC}"
+        
+        # Create pane (split horizontally)
+        tmux split-window -h
+        
+        # Get the new pane index
+        new_pane=$(tmux list-panes -F '#{pane_index}' | sort -n | tail -1)
+        
+        # Set title
+        tmux select-pane -T "$name"
+        
+        # Start kimi with named session
+        tmux send-keys -t "$new_pane" "kimi --session $session_name -w ." Enter
+        
+        echo -e "  ${GREEN}✓${NC} Created pane $new_pane: $name"
+        echo -e "  ${GREEN}✓${NC} Session: $session_name"
+        
+        # Create initial task file
+        cat > ".agents/handoffs/$name-scope.md" << EOF
+# $name Agent Scope
+
+**Session:** $session_name
+**Created:** $(date -Iseconds)
+
+## Scope
+$scope
+
+## Communication
+- Receive messages via: dm $name "<message>"
+- Check tasks: cm
+
+## Notes
+EOF
+        
+        # Wait a moment for kimi to start
+        sleep 1
+    done
+    
+    # Set title for current pane if not set
+    current_title=$(tmux display-message -p '#{pane_title}')
+    if [ -z "$current_title" ] || [ "$current_title" = "bash" ] || [ "$current_title" = "zsh" ]; then
+        tmux select-pane -T "lead"
+        echo -e "  ${GREEN}✓${NC} Set current pane title to: lead"
+    fi
+    
+    # Arrange panes evenly
+    tmux select-layout even-horizontal 2>/dev/null || true
+    
+    # Summary
+    echo ""
+    echo -e "${GREEN}=== Setup Complete ===${NC}"
+    echo ""
+    echo "Messaging commands:"
+    echo "  dm <agent> <msg>        - Direct message (e.g., dm architect 'hello')"
+    echo "  agent-task create <ttl>  - Create task"
+    echo "  agent-task list          - View all tasks"
+    echo "  cm                       - Check messages"
+    echo ""
+    echo "To import another agent's context:"
+    echo "  /import <agent-session>"
+    echo ""
+    echo "Test message:"
+    echo -e "  ${GREEN}dm ${AGENT_NAMES[1]} 'Hello from lead'${NC}"
+}
+
+# Main
+main() {
+    if in_tmux; then
+        setup_agents
+    else
+        not_in_tmux_instructions
+    fi
+}
+
+main "$@"

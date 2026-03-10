@@ -1,0 +1,14 @@
+#!/bin/bash
+#
+# agent-title - Set your tmux pane title for discovery
+# Usage: agent-title <name>
+# Example: agent-title tester
+
+if [ -z "$1" ]; then
+    echo "Usage: agent-title <name>"
+    echo "Current: $(tmux display-message -p '#{pane_title}' 2>/dev/null || echo 'not set')"
+    exit 1
+fi
+
+tmux select-pane -T "$1"
+echo "Pane title set to: $1"

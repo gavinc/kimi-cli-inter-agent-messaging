@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+# dm - Send direct message to another agent via tmux
+# Usage: dm <agent-name> <message>
+# Example: dm tester "Build complete"
+#
+# Detects target agent state and chooses delivery method:
+#   - IDLE (agent): Direct interrupt + message
+#   - BUSY (context): Interrupt + message (urgent)  
+#   - SHELL mode: Popup overlay (can't receive in shell)
+#
+
+TARGET="$1"
+shift
+MESSAGE="$*"
+SENDER="${AGENT_NAME:-$(tmux display-message -p '#{pane_title}' 2>/dev/null || echo 'unknown')}"
+
+if [ -z "$TARGET" ] || [ -z "$MESSAGE" ]; then
+    echo "Usage: dm <agent-name> <message>"
+    echo "Example: dm tester 'Build complete'"
+    exit 1
+fi
+
+# Find pane by title (case-insensitive, flexible matching)
+PANE_INFO=$(tmux list-panes -a -F '#{pane_id} #{pane_title}' 2>/dev/null | grep -i "$TARGET")
+
+if [ -z "$PANE_INFO" ]; then
+    echo "[!] Agent '$TARGET' not found in tmux"
+    echo "   Available panes:"
+    tmux list-panes -a -F '  #{pane_id}: #{pane_title}' 2>/dev/null | grep -v "^  %" || true
+    exit 1
+fi
+
+PANE_ID=$(echo "$PANE_INFO" | awk '{print $1}')
+
+# Detect agent state from status bar leftmost word
+STATUS_LINE=$(tmux capture-pane -t "$PANE_ID" -p 2>/dev/null | tail -1)
+STATUS_FIRST=$(echo "$STATUS_LINE" | awk '{print $1}')
+
+# Prepare the message
+MULTILINE_MSG="📨 FROM $SENDER: $MESSAGE
+Incorporate this request and continue with appropriate priority based on your current work."
+
+case "$STATUS_FIRST" in
+    shell)
+        # Shell mode - can't receive DMs directly, use popup
+        echo "📨 Sending to $TARGET (pane $PANE_ID) via POPUP [shell mode]..."
+        tmux popup -E -t "$PANE_ID" -w 70% -h 40% -T "📨 from $SENDER" \
+            "echo ''; echo '$MULTILINE_MSG'; echo ''; read -p 'Press Enter...'"
+        ;;
+    context:)
+        # Busy but in agent mode - send interrupt
+        echo "📨 Sending to $TARGET (pane $PANE_ID) [interrupt - busy]..."
+        tmux send-keys -t "$PANE_ID" C-c
+        sleep 0.2
+        tmux send-keys -t "$PANE_ID" "$MULTILINE_MSG" Enter
+        ;;
+    agent|*)
+        # Idle agent mode - normal send
+        echo "📨 Sending to $TARGET (pane $PANE_ID) [idle]..."
+        tmux send-keys -t "$PANE_ID" C-c
+        sleep 0.2
+        tmux send-keys -t "$PANE_ID" "$MULTILINE_MSG" Enter
+        ;;
+esac
+
+echo "✅ Message sent to $TARGET"

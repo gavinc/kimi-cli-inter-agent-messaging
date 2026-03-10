@@ -1,0 +1,318 @@
+#!/bin/bash
+#
+# agent-task - Task queue management with file locking for multi-agent coordination
+# Usage: agent-task <command> [args]
+#
+# Commands:
+#   claim <task-id> <agent-name>     - Claim a task (fails if already claimed)
+#   unclaim <task-id>               - Release a task claim
+#   list                            - List all tasks with status
+#   create <title> <agent>          - Create new task file
+#   complete <task-id>              - Mark task as complete (moves to done/)
+#
+
+set -e
+
+# Configuration
+QUEUE_DIR=".agents/queue"
+TODO_DIR="$QUEUE_DIR/todo"
+DOING_DIR="$QUEUE_DIR/doing"
+DONE_DIR="$QUEUE_DIR/done"
+LOCK_DIR="$QUEUE_DIR/.locks"
+
+# Ensure directories exist
+mkdir -p "$TODO_DIR" "$DOING_DIR" "$DONE_DIR" "$LOCK_DIR"
+
+# Generate lock file path for a task
+lock_file() {
+    local task_id="$1"
+    echo "$LOCK_DIR/${task_id}.lock"
+}
+
+# Try to acquire exclusive lock (non-blocking)
+# Returns 0 if lock acquired, 1 if already locked
+try_lock() {
+    local task_id="$1"
+    local agent="$2"
+    local lockfile=$(lock_file "$task_id")
+    
+    # Use mkdir for atomic lock creation (POSIX-compliant)
+    if mkdir "$lockfile" 2>/dev/null; then
+        # Lock acquired - write metadata
+        echo "$agent" > "$lockfile/owner"
+        echo "$(date -Iseconds)" > "$lockfile/claimed_at"
+        echo "$$" > "$lockfile/pid"
+        return 0
+    else
+        # Lock exists - check if stale
+        if [ -f "$lockfile/pid" ]; then
+            local pid
+            pid=$(cat "$lockfile/pid")
+            if ! kill -0 "$pid" 2>/dev/null; then
+                # Stale lock - previous agent died
+                echo "[!] Stale lock detected for $task_id, reclaiming..."
+                rm -rf "$lockfile"
+                mkdir "$lockfile"
+                echo "$agent" > "$lockfile/owner"
+                echo "$(date -Iseconds)" > "$lockfile/claimed_at"
+                echo "$$" > "$lockfile/pid"
+                return 0
+            fi
+        fi
+        return 1
+    fi
+}
+
+# Release lock
+unlock() {
+    local task_id="$1"
+    local lockfile=$(lock_file "$task_id")
+    rm -rf "$lockfile"
+}
+
+# Get lock owner
+lock_owner() {
+    local task_id="$1"
+    local lockfile=$(lock_file "$task_id")
+    if [ -f "$lockfile/owner" ]; then
+        cat "$lockfile/owner"
+    else
+        echo ""
+    fi
+}
+
+# Generate task ID from title
+task_id() {
+    local title="$1"
+    echo "$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')-$(date +%s)"
+}
+
+# List all tasks
+list_tasks() {
+    echo "==============================================================="
+    echo "TASK QUEUE"
+    echo "==============================================================="
+    
+    # TODO tasks
+    echo ""
+    echo "[TODO] Waiting:"
+    local todo_count=0
+    for task in "$TODO_DIR"/*.md; do
+        [ -e "$task" ] || continue  # Skip if no files match glob
+        local basename
+        basename=$(basename "$task" .md)
+        # Check if locked
+        local lockfile
+        lockfile=$(lock_file "$basename")
+        if [ -d "$lockfile" ]; then
+            local owner
+            owner=$(lock_owner "$basename")
+            echo "   [LOCKED] $basename (claimed by $owner)"
+        else
+            echo "   [OPEN] $basename"
+        fi
+        todo_count=$((todo_count + 1))
+    done
+    if [ "$todo_count" -eq 0 ]; then
+        echo "   (empty)"
+    fi
+    
+    # DOING tasks
+    echo ""
+    echo "[DOING] In progress:"
+    local doing_count=0
+    for task in "$DOING_DIR"/*.md; do
+        [ -e "$task" ] || continue  # Skip if no files match glob
+        local basename
+        basename=$(basename "$task" .md)
+        local owner
+        owner=$(lock_owner "$basename")
+        if [ -n "$owner" ]; then
+            echo "   [WORK] $basename ($owner)"
+        else
+            echo "   [WORK] $basename (orphaned)"
+        fi
+        doing_count=$((doing_count + 1))
+    done
+    if [ "$doing_count" -eq 0 ]; then
+        echo "   (empty)"
+    fi
+    
+    # DONE tasks
+    echo ""
+    echo "[DONE] Completed:"
+    local done_count
+    done_count=$(ls -1 "$DONE_DIR"/*.md 2>/dev/null | wc -l)
+    if [ "$done_count" -gt 0 ]; then
+        echo "   $done_count task(s) completed"
+    else
+        echo "   (empty)"
+    fi
+    
+    echo ""
+    echo "==============================================================="
+}
+
+# Claim a task
+claim_task() {
+    local task_id="$1"
+    local agent="$2"
+    
+    if [ -z "$task_id" ] || [ -z "$agent" ]; then
+        echo "Usage: agent-task claim <task-id> <agent-name>"
+        exit 1
+    fi
+    
+    local task_file="$TODO_DIR/${task_id}.md"
+    
+    if [ ! -f "$task_file" ]; then
+        echo "[!] Task not found: $task_id"
+        exit 1
+    fi
+    
+    if try_lock "$task_id" "$agent"; then
+        # Move to doing
+        mv "$task_file" "$DOING_DIR/"
+        # Update task file with claim info
+        echo "" >> "$DOING_DIR/${task_id}.md"
+        echo "---" >> "$DOING_DIR/${task_id}.md"
+        echo "Claimed by: $agent at $(date -Iseconds)" >> "$DOING_DIR/${task_id}.md"
+        echo "[OK] Task claimed: $task_id"
+        echo "   Agent: $agent"
+        return 0
+    else
+        local owner
+        owner=$(lock_owner "$task_id")
+        echo "[!] Task already claimed by: $owner"
+        exit 1
+    fi
+}
+
+# Unclaim a task
+unclaim_task() {
+    local task_id="$1"
+    
+    if [ -z "$task_id" ]; then
+        echo "Usage: agent-task unclaim <task-id>"
+        exit 1
+    fi
+    
+    local doing_file="$DOING_DIR/${task_id}.md"
+    local todo_file="$TODO_DIR/${task_id}.md"
+    
+    if [ -f "$doing_file" ]; then
+        # Move back to todo
+        mv "$doing_file" "$TODO_DIR/"
+        unlock "$task_id"
+        echo "[<] Task unclaimed and returned to queue: $task_id"
+    elif [ -f "$todo_file" ]; then
+        unlock "$task_id"
+        echo "[UNLOCK] Lock released: $task_id"
+    else
+        echo "[!] Task not found: $task_id"
+        exit 1
+    fi
+}
+
+# Create new task
+create_task() {
+    local title="$1"
+    local assignee="${2:-any}"
+    
+    if [ -z "$title" ]; then
+        echo "Usage: agent-task create <title> [assignee]"
+        exit 1
+    fi
+    
+    local id
+    id=$(task_id "$title")
+    local file="$TODO_DIR/${id}.md"
+    
+    cat > "$file" << EOF
+# Task: $title
+
+**ID:** $id
+**Created:** $(date -Iseconds)
+**Status:** pending
+**Assignee:** $assignee
+
+## Description
+[Add task description here]
+
+## Acceptance Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Notes
+EOF
+
+    echo "[CREATED] Task: $id"
+    echo "   File: $file"
+}
+
+# Complete a task
+complete_task() {
+    local task_id="$1"
+    
+    if [ -z "$task_id" ]; then
+        echo "Usage: agent-task complete <task-id>"
+        exit 1
+    fi
+    
+    local doing_file="$DOING_DIR/${task_id}.md"
+    
+    if [ ! -f "$doing_file" ]; then
+        echo "[!] Task not found in doing/: $task_id"
+        echo "   Task must be claimed first (in doing/ directory)"
+        exit 1
+    fi
+    
+    # Update task file
+    echo "" >> "$doing_file"
+    echo "---" >> "$doing_file"
+    echo "Completed at: $(date -Iseconds)" >> "$doing_file"
+    
+    # Move to done
+    mv "$doing_file" "$DONE_DIR/"
+    unlock "$task_id"
+    
+    echo "[OK] Task completed: $task_id"
+}
+
+# Main command dispatcher
+case "${1:-list}" in
+    claim)
+        shift
+        claim_task "$@"
+        ;;
+    unclaim)
+        shift
+        unclaim_task "$@"
+        ;;
+    create)
+        shift
+        create_task "$@"
+        ;;
+    complete)
+        shift
+        complete_task "$@"
+        ;;
+    list|ls)
+        list_tasks
+        ;;
+    *)
+        echo "Usage: agent-task <command> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  list                    - Show all tasks"
+        echo "  create <title> [agent]  - Create new task"
+        echo "  claim <id> <agent>      - Claim a task (with file locking)"
+        echo "  unclaim <id>            - Release a task claim"
+        echo "  complete <id>           - Mark task as done"
+        echo ""
+        echo "Examples:"
+        echo "  agent-task create 'Fix auth bug' tester"
+        echo "  agent-task claim fix-auth-bug-1234567890 lead"
+        echo "  agent-task complete fix-auth-bug-1234567890"
+        ;;
+esac

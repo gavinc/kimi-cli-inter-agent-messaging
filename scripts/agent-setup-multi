@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+# agent-setup-multi - Create multi-agent tmux environment from shell
+# Usage: agent-setup-multi [project-name]
+#
+
+set -e
+
+PROJECT_NAME="${1:-${PWD##*/}}"
+PROJECT_NAME="${PROJECT_NAME//[^a-zA-Z0-9]/-}"
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo "=== Multi-Agent Setup ==="
+echo ""
+echo "Project: $PROJECT_NAME"
+echo ""
+
+# Check if tmux session exists
+if tmux has-session -t "$PROJECT_NAME" 2>/dev/null; then
+    echo "Session '$PROJECT_NAME' already exists."
+    echo "Attach with: tmux attach -t $PROJECT_NAME"
+    exit 1
+fi
+
+# Check if in right directory
+if [ ! -f ".agents/bin/agent-task" ]; then
+    echo "[!] Messaging scripts not found in .agents/bin/"
+    echo "    Run from project root with messaging skill installed."
+    exit 1
+fi
+
+# Create tmux session
+echo "Creating tmux session: $PROJECT_NAME"
+tmux new-session -d -s "$PROJECT_NAME"
+
+# Create directory structure in project
+mkdir -p .agents/{queue/{todo,doing,done,completed,.locks},handoffs}
+
+# Pane 0: Main agent (lead)
+tmux rename-window -t "$PROJECT_NAME:0" "agents"
+tmux send-keys -t "$PROJECT_NAME:0.0" "cd '$PWD' && clear && echo '=== Lead Agent ===' && echo 'Run: agent-onboard' && echo ''" Enter
+
+# Interactive agent setup
+echo ""
+read -p "How many additional agents? [2]: " num_agents
+num_agents="${num_agents:-2}"
+
+for ((i=1; i<=num_agents; i++)); do
+    echo ""
+    echo "Agent $i:"
+    read -p "  Name (e.g., 'architect', 'tester') [agent-$i]: " name
+    name="${name:-agent-$i}"
+    read -p "  Scope/description: " scope
+    scope="${scope:-General purpose}"
+    
+    session_name="$name-$PROJECT_NAME"
+    
+    # Create pane
+    tmux split-window -t "$PROJECT_NAME:0" -h
+    new_pane=$(tmux list-panes -t "$PROJECT_NAME:0" -F '#{pane_index}' | sort -n | tail -1)
+    
+    # Set title
+    tmux select-pane -t "$PROJECT_NAME:0.$new_pane" -T "$name"
+    
+    # Start agent
+    tmux send-keys -t "$PROJECT_NAME:0.$new_pane" "cd '$PWD' && kimi --session $session_name -w ." Enter
+    
+    # Create scope doc
+    cat > ".agents/handoffs/$name-scope.md" << EOF
+# $name Agent Scope
+
+**Session:** $session_name
+**Created:** $(date -Iseconds)
+
+## Scope
+$scope
+
+## Communication
+- Receive messages via: dm $name "<message>"
+- Check tasks: cm
+EOF
+    
+    echo -e "  ${GREEN}✓${NC} Created $name (session: $session_name)"
+done
+
+# Set lead pane title
+tmux select-pane -t "$PROJECT_NAME:0.0" -T "lead"
+
+# Arrange layout
+tmux select-layout -t "$PROJECT_NAME:0" even-horizontal 2>/dev/null || tmux select-layout -t "$PROJECT_NAME:0" tiled
+
+# Attach
+echo ""
+echo -e "${GREEN}=== Setup Complete ===${NC}"
+echo ""
+echo "Starting tmux..."
+echo ""
+echo "In the lead pane, run: agent-onboard"
+echo ""
+sleep 1
+tmux attach -t "$PROJECT_NAME"

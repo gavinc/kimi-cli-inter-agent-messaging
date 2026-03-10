@@ -1,0 +1,49 @@
+#!/bin/bash
+#
+# cm - Check messages (check messages queue)
+# Usage: cm
+#
+
+# Try to find project root
+cd "$(dirname "$0")/../.." 2>/dev/null || cd "$(pwd)"
+
+TODO_DIR=".agents/queue/todo"
+NOTIFICATIONS=".agents/.notifications"
+
+FOUND=0
+
+# Check for tasks
+if [ -d "$TODO_DIR" ] && [ "$(ls -A "$TODO_DIR" 2>/dev/null)" ]; then
+    echo "==============================================================="
+    echo "NEW TASKS"
+    echo "==============================================================="
+    for task in "$TODO_DIR"/*.md; do
+        [ -f "$task" ] || continue
+        echo ""
+        echo "--- $(basename "$task") ---"
+        head -30 "$task"
+        echo ""
+    done
+    FOUND=1
+fi
+
+# Check for notifications
+if [ -f "$NOTIFICATIONS" ] && [ -s "$NOTIFICATIONS" ]; then
+    echo "==============================================================="
+    echo "NOTIFICATIONS"
+    echo "==============================================================="
+    cat "$NOTIFICATIONS"
+    echo ""
+    # Archive and clear
+    mkdir -p ".agents/.notifications-archive"
+    echo "--- $(date '+%Y-%m-%d %H:%M:%S') ---" >> ".agents/.notifications-archive/$(date '+%Y-%m-%d').log"
+    cat "$NOTIFICATIONS" >> ".agents/.notifications-archive/$(date '+%Y-%m-%d').log"
+    > "$NOTIFICATIONS"
+    FOUND=1
+fi
+
+if [ $FOUND -eq 0 ]; then
+    echo "No new messages"
+fi
+
+exit 0
