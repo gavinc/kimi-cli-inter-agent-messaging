@@ -2,7 +2,7 @@
 #
 # dm - Send direct message to another agent via tmux
 # Usage: dm <agent-name> <message>
-# Example: dm tester "Build complete"
+# Example: dm tessa "Next.js 16 upgrade complete"
 #
 # Detects target agent state and chooses delivery method:
 #   - IDLE (agent): Direct interrupt + message
@@ -17,7 +17,7 @@ SENDER="${AGENT_NAME:-$(tmux display-message -p '#{pane_title}' 2>/dev/null || e
 
 if [ -z "$TARGET" ] || [ -z "$MESSAGE" ]; then
     echo "Usage: dm <agent-name> <message>"
-    echo "Example: dm tester 'Build complete'"
+    echo "Example: dm tessa 'Build complete'"
     exit 1
 fi
 
@@ -33,10 +33,7 @@ fi
 
 PANE_ID=$(echo "$PANE_INFO" | awk '{print $1}')
 
-# Detect agent state from status bar FIRST WORD:
-# When busy: status bar shows ONLY "context: 41.5%..." (first word is "context:")
-# When idle: status bar shows "agent (kimi...) @: mention..." (first word is "agent")
-# When shell mode: status bar shows "shell ctrl-x..." (first word is "shell")
+# Detect agent state from status bar leftmost word
 STATUS_LINE=$(tmux capture-pane -t "$PANE_ID" -p 2>/dev/null | tail -1)
 STATUS_FIRST=$(echo "$STATUS_LINE" | awk '{print $1}')
 
@@ -59,10 +56,8 @@ case "$STATUS_FIRST" in
         tmux send-keys -t "$PANE_ID" "$MULTILINE_MSG" Enter
         ;;
     agent|*)
-        # Idle agent mode - normal send
+        # Idle agent mode - just send message (no interrupt needed)
         echo "📨 Sending to $TARGET (pane $PANE_ID) [idle]..."
-        tmux send-keys -t "$PANE_ID" C-c
-        sleep 0.2
         tmux send-keys -t "$PANE_ID" "$MULTILINE_MSG" Enter
         ;;
 esac
