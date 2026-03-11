@@ -212,6 +212,18 @@ tmux capture-pane -t <pane> -p | tail -1 | awk '{print $1}'
 - `context:` = busy (ONLY context showing, short status), will receive after interrupt  
 - `shell` = shell mode, popup used
 
+### How Messages Actually Work
+
+**Important:** The target pane is running kimi-cli (an AI agent), not a shell.
+
+When you run `dm @agent-name "message"`:
+1. The script detects the target agent's state
+2. If interruptive: sends Ctrl-C, then sends the raw text
+3. If passive: sends the raw text directly
+4. The AI receives the text as input and processes it
+
+**There are no color codes or formatting** - the AI reads plain text. The emoji prefixes (🚨, 📨) are just text characters that help distinguish message types.
+
 ---
 
 ## Technical Details
@@ -232,3 +244,194 @@ Task claiming uses atomic `mkdir` locks:
 - Prevents race conditions
 - Auto-detects stale locks (agent died)
 - Lock metadata: owner, timestamp, PID
+
+---
+
+## Notification Protocol: Notify Idle Agents
+
+**Rule:** When you create a task for another agent, you MUST notify them if they are idle.
+
+### Why?
+
+Agents only check their queue:
+1. At session start (via `cm`)
+2. When manually prompted
+
+If an agent is idle and you queue work, they won't know unless you tell them.
+
+### The Protocol
+
+**Step 1: Create the task**
+```bash
+agent-task create "Test new feature" @testing-agent
+# Task created: 2026-03-10-test-new-feature.md
+```
+
+**Step 2: Check if target agent is idle**
+```bash
+# Check status bar first word
+tmux capture-pane -t <target-pane> -p | tail -1 | awk '{print $1}'
+```
+
+**Step 3: Notify if idle**
+
+| Status | Action |
+|--------|--------|
+| `agent` | **IDLE** - Send DM with `dm -c` |
+| `context:` | **BUSY** - Silent (they'll check when done) |
+| `shell` | **SHELL** - Use popup with `dm -i` |
+
+**Step 4: Send appropriate message**
+
+```bash
+# For idle agents (dm -c checks idle first)
+dm -c @testing-agent "📬 New task from @coding-agent: Test new feature. Run 'cm' to check."
+
+# For urgent matters (interrupts even if busy)
+dm -i @testing-agent "🚨 URGENT: Production bug fix needed"
+```
+
+### Automated Solution
+
+Add to your shell profile:
+
+```bash
+# Create task AND notify if idle
+agent-task-notify() {
+    local task_name="$1"
+    local target_agent="$2"
+    
+    # Create the task
+    agent-task create "$task_name" "$target_agent"
+    
+    # Extract agent name from handle (remove @)
+    local agent_name="${target_agent#@}"
+    
+    # Map agent to pane (customize for your setup)
+    local pane=""
+    case "$agent_name" in
+        testing-agent) pane="0:1.2" ;;
+        coding-agent) pane="0:1.3" ;;
+        *) echo "Unknown agent: $target_agent"; return 1 ;;
+    esac
+    
+    # Check if idle
+    local status=$(tmux capture-pane -t "$pane" -p 2>/dev/null | tail -1 | awk '{print $1}')
+    
+    if [ "$status" = "agent" ]; then
+        # Idle - send notification
+        dm -c "$target_agent" "📬 New task from $(whoami): $task_name. Run 'cm' to check."
+        echo "✅ Task created and $target_agent notified (idle)"
+    elif [ "$status" = "context:" ]; then
+        # Busy - silent
+        echo "✅ Task created ($target_agent busy, will see when done)"
+    else
+        # Unknown state - still notify
+        dm "$target_agent" "📬 New task: $task_name. Run 'cm' to check."
+        echo "✅ Task created and $target_agent notified"
+    fi
+}
+```
+
+Usage:
+```bash
+agent-task-notify "Test auth fix" @testing-agent
+```
+
+### Agent Responsibility: Check Mail at Session End
+
+**All agents should run `cm` at the end of every session/context run.**
+
+Add to agent system prompts:
+```
+Before ending session, run `cm` to check for queued tasks.
+If tasks exist: Report to user and ask if they should be picked up.
+```
+
+This ensures no tasks are missed when agents become idle.
+
+---
+
+## Complete Workflow Example
+
+```bash
+# Chad (coding-agent) finishes feature implementation
+cd ~/coding/vercel-chat
+
+# 1. Create testing task for Tessa
+agent-task create "Test auth system" @testing-agent
+# → Created: 2026-03-10-test-auth-system.md
+
+# 2. Create detailed handoff
+cat > .agents/handoffs/2026-03-10-auth-system.md << 'EOF'
+# Handoff: Auth System Implementation
+...
+EOF
+
+# 3. Notify Tessa if idle
+dm -c @testing-agent "📬 New testing task: Auth System. Run 'cm' for details."
+# → Checks if 0:1.2 shows "agent" (idle), sends message if so
+
+# 4. Update own status
+.agent-status @coding-agent "done | Task queued for Tessa"
+
+# Tessa (testing-agent) receives message
+# → Runs 'cm' to check queue
+# → Sees task, claims it, starts testing
+```
+
+---
+
+## Important Notes
+
+### Don't Send Echo Commands
+
+**WRONG:**
+```bash
+# Don't do this - echo is unnecessary
+tmux send-keys -t 0:1.2 "echo 'message'" Enter
+```
+
+**RIGHT:**
+```bash
+# Send raw message, agent will see it
+tmux send-keys -t 0:1.2 "message" Enter
+# Or use the dm script:
+dm @testing-agent "message"
+```
+
+### Agent Self-Boot Check
+
+**Every agent should run `cm` at:**
+1. Session start
+2. After completing work (before going idle)
+3. When explicitly asked by user
+
+This ensures the queue is always checked when transitioning to idle state.
+
+---
+
+## Troubleshooting
+
+### "I sent a task but they didn't respond"
+
+Check:
+1. Was the task created? `agent-queue status`
+2. Was the agent notified? Check their pane history
+3. Is the agent idle? `tmux capture-pane -t <pane> -p | tail -1`
+4. Did they run `cm`? Ask them to check messages
+
+### "dm says agent is busy but they look idle"
+
+The status bar detection looks at the FIRST word:
+- `agent` = full status bar showing = IDLE
+- `context:` = only context showing = BUSY (agent is thinking)
+
+If the status bar is truncated or blank, the detection may fail.
+
+### "Task was claimed but work wasn't started"
+
+Agent may not have run `cm` after claiming. Remind them:
+```bash
+dm -c @agent-name "You claimed a task but haven't started. Run 'cm' to see details."
+```

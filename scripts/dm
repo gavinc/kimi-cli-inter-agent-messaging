@@ -2,7 +2,7 @@
 #
 # dm - Send direct message to another agent via tmux
 # Usage: dm <agent-name> <message>
-# Example: dm tessa "Next.js 16 upgrade complete"
+# Example: dm tester "Build complete"
 #
 # Detects target agent state and chooses delivery method:
 #   - IDLE (agent): Direct interrupt + message
@@ -17,7 +17,7 @@ SENDER="${AGENT_NAME:-$(tmux display-message -p '#{pane_title}' 2>/dev/null || e
 
 if [ -z "$TARGET" ] || [ -z "$MESSAGE" ]; then
     echo "Usage: dm <agent-name> <message>"
-    echo "Example: dm tessa 'Build complete'"
+    echo "Example: dm tester 'Build complete'"
     exit 1
 fi
 
@@ -33,7 +33,10 @@ fi
 
 PANE_ID=$(echo "$PANE_INFO" | awk '{print $1}')
 
-# Detect agent state from status bar leftmost word
+# Detect agent state from status bar FIRST WORD:
+# When busy: status bar shows ONLY "context: 41.5%..." (first word is "context:")
+# When idle: status bar shows "agent (kimi...) @: mention..." (first word is "agent")
+# When shell mode: status bar shows "shell ctrl-x..." (first word is "shell")
 STATUS_LINE=$(tmux capture-pane -t "$PANE_ID" -p 2>/dev/null | tail -1)
 STATUS_FIRST=$(echo "$STATUS_LINE" | awk '{print $1}')
 
