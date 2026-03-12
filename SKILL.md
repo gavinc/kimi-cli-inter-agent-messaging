@@ -142,8 +142,16 @@ Test: dm architect "Hello from main"
 │   ├── completed/  # Archived
 │   └── .locks/     # File locks (mkdir-based)
 ├── handoffs/       # Detailed reports/context
+│   ├── coding-agent/   # Handoffs FROM coding-agent
+│   ├── testing-agent/  # Handoffs FROM testing-agent
+│   └── docs-agent/     # Handoffs FROM docs-agent
 └── bin/            # Helper scripts
 ```
+
+**Handoff Naming Convention:**
+- Create subdirectory per agent: `.agents/handoffs/<agent-name>/`
+- Filename format: `YYYY-MM-DD-<brief-description>.md`
+- Example: `.agents/handoffs/testing-agent/2024-03-12-auth-tests.md`
 
 ---
 
