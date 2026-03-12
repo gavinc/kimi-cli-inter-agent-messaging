@@ -27,3 +27,27 @@ agent-onboard
 ## License
 
 MIT
+
+## Agent Identity in DMs
+
+When sending direct messages, agents must be properly identified. Set the `AGENT_HANDLE` environment variable:
+
+```bash
+# For testing-agent (Tessa)
+export AGENT_HANDLE="@testing-agent"
+
+# For coding-agent (Chad)  
+export AGENT_HANDLE="@coding-agent"
+```
+
+Then messages will correctly show:
+```
+📨 DM FROM @testing-agent: Message text
+```
+
+Instead of:
+```
+📨 DM FROM heavygee: Message text  ❌ Wrong!
+```
+
+Add this to your shell profile or set at session start.

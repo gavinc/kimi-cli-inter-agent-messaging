@@ -1,0 +1,47 @@
+#!/bin/bash
+#
+# agent-status - Check agent status (idle/busy/shell)
+# Usage: agent-status [@agent-name]
+# Returns: idle | busy | shell | not-found
+#
+# Checks the actual pane content (not title) for state detection
+
+TARGET="${1:-}"
+
+# Strip @ if provided
+TARGET="${TARGET#@}"
+
+if [ -z "$TARGET" ]; then
+    echo "Usage: agent-status [@agent-name]"
+    echo "Example: agent-status @testing-agent"
+    exit 1
+fi
+
+# Find pane by title (case-insensitive)
+PANE_INFO=$(tmux list-panes -a -F '#{pane_id} #{pane_title}' 2>/dev/null | grep -i "$TARGET" | head -1)
+
+if [ -z "$PANE_INFO" ]; then
+    echo "not-found"
+    exit 1
+fi
+
+PANE_ID=$(echo "$PANE_INFO" | awk '{print $1}')
+
+# Get first word of last line (the status indicator)
+STATUS_LINE=$(tmux capture-pane -t "$PANE_ID" -p 2>/dev/null | tail -1)
+STATUS_FIRST=$(echo "$STATUS_LINE" | awk '{print $1}')
+
+case "$STATUS_FIRST" in
+    context:)
+        echo "busy"
+        ;;
+    agent|idle)
+        echo "idle"
+        ;;
+    shell)
+        echo "shell"
+        ;;
+    *)
+        echo "unknown"
+        ;;
+esac

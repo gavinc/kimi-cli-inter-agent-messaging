@@ -18,6 +18,21 @@ metadata:
 - **tmux** installed
 - **kimi CLI** installed  
 - Multiple agents need to coordinate on a project
+- **PATH setup**: `.agents/bin` must be in your PATH for `cm`, `dm` commands to work
+
+### PATH Setup (Important!)
+
+The skill installs binaries to `.agents/bin/` which must be in your PATH. The `agent-onboard` script will attempt to add this automatically, but if commands like `cm` or `dm` are not found, manually add to your shell profile:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export PATH="/path/to/your/project/.agents/bin:$PATH"
+```
+
+Or for current session only:
+```bash
+export PATH="$PWD/.agents/bin:$PATH"
+```
 
 ---
 
@@ -188,6 +203,19 @@ If you have an existing agent session you want to preserve:
 ---
 
 ## Troubleshooting
+
+### "cm: command not found" or "dm: command not found"
+The `.agents/bin` directory is not in your PATH. Fix:
+
+```bash
+# For current session
+export PATH="$PWD/.agents/bin:$PATH"
+
+# For permanent fix, add to ~/.bashrc or ~/.zshrc:
+echo 'export PATH="/path/to/project/.agents/bin:$PATH"' >> ~/.bashrc
+```
+
+Then reload your shell or run `source ~/.bashrc`.
 
 ### "Not in tmux"
 You must run from within a tmux session, or use the shell setup script.

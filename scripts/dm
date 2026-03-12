@@ -13,7 +13,10 @@
 TARGET="$1"
 shift
 MESSAGE="$*"
-SENDER="${AGENT_NAME:-$(tmux display-message -p '#{pane_title}' 2>/dev/null || echo 'unknown')}"
+
+# Get sender info from current pane (where this script is running)
+CURRENT_PANE=$(tmux display-message -p '#{pane_id}')
+SENDER="${AGENT_NAME:-$(tmux display-message -t "$CURRENT_PANE" -p '#{pane_title}' 2>/dev/null || echo 'unknown')}"
 
 if [ -z "$TARGET" ] || [ -z "$MESSAGE" ]; then
     echo "Usage: dm <agent-name> <message>"

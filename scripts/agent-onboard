@@ -200,8 +200,34 @@ EOF
     echo -e "  ${GREEN}dm ${AGENT_NAMES[1]} 'Hello from lead'${NC}"
 }
 
+# Setup PATH for agent binaries
+setup_path() {
+    # Check if .agents/bin is already in PATH
+    if [[ ":$PATH:" != *":$PWD/.agents/bin:"* ]] && [[ ":$PATH:" != *":$HOME/.agents/bin:"* ]]; then
+        # Add to PATH for current session
+        export PATH="$PWD/.agents/bin:$PATH"
+        
+        # Add to shell profile for persistence
+        if [ -f "$HOME/.bashrc" ]; then
+            if ! grep -q ".agents/bin" "$HOME/.bashrc"; then
+                echo 'export PATH="$PWD/.agents/bin:$PATH"' >> "$HOME/.bashrc"
+                echo -e "${GREEN}✓${NC} Added .agents/bin to PATH in ~/.bashrc"
+            fi
+        fi
+        if [ -f "$HOME/.zshrc" ]; then
+            if ! grep -q ".agents/bin" "$HOME/.zshrc"; then
+                echo 'export PATH="$PWD/.agents/bin:$PATH"' >> "$HOME/.zshrc"
+                echo -e "${GREEN}✓${NC} Added .agents/bin to PATH in ~/.zshrc"
+            fi
+        fi
+    fi
+}
+
 # Main
 main() {
+    # Always setup PATH first
+    setup_path
+    
     if in_tmux; then
         setup_agents
     else
