@@ -87,11 +87,10 @@ setup_agents() {
         fi
     fi
     
-    # Create directory structure
+    # Create directory structure (handoffs subdirs created per agent below)
     echo "Creating directory structure..."
-    mkdir -p .agents/{queue/{todo,doing,done,completed,.locks},handoffs,bin}
+    mkdir -p .agents/{queue/{todo,doing,done,completed,.locks},bin}
     echo -e "  ${GREEN}✓${NC} .agents/queue/"
-    echo -e "  ${GREEN}✓${NC} .agents/handoffs/"
     
     # Ask about adding agents
     echo ""
@@ -152,8 +151,12 @@ setup_agents() {
         echo -e "  ${GREEN}✓${NC} Created pane $new_pane: $name"
         echo -e "  ${GREEN}✓${NC} Session: $session_name"
         
-        # Create initial task file
-        cat > ".agents/handoffs/$name-scope.md" << EOF
+        # Create handoffs subdirectory for this agent
+        mkdir -p ".agents/handoffs/$name"
+        echo -e "  ${GREEN}✓${NC} .agents/handoffs/$name/"
+        
+        # Create initial scope file
+        cat > ".agents/handoffs/$name/scope.md" << EOF
 # $name Agent Scope
 
 **Session:** $session_name

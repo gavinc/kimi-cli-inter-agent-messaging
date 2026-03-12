@@ -399,7 +399,7 @@ agent-task create "Test auth system" @testing-agent
 # → Created: 2026-03-10-test-auth-system.md
 
 # 2. Create detailed handoff
-cat > .agents/handoffs/2026-03-10-auth-system.md << 'EOF'
+cat > .agents/handoffs/coding-agent/2026-03-10-auth-system.md << 'EOF'
 # Handoff: Auth System Implementation
 ...
 EOF
