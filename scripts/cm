@@ -2,39 +2,94 @@
 #
 # cm - Check messages
 # 
-# SINGLE SOURCE OF TRUTH for inter-agent messaging.
-# Reads from ONE place: .agents/queue/todo/
-#
+# Shows task queue in three states: todo, doing, done
+# 
 # Usage: cm
-#
-# This is the ONLY way to receive messages. All agents MUST run this:
-#   1. At session start
-#   2. Before going idle
 
 set -e
 
 cd "$(dirname "$0")/../.." 2>/dev/null || cd "$(pwd)"
 
 TODO_DIR=".agents/queue/todo"
+DOING_DIR=".agents/queue/doing"
+DONE_DIR=".agents/queue/done"
+
+FOUND=0
+
+# ============================================================================
+# TODO - New tasks waiting
+# ============================================================================
 
 if [ -d "$TODO_DIR" ] && [ "$(ls -A "$TODO_DIR" 2>/dev/null)" ]; then
     echo ""
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║  📬 NEW TASKS                                                ║"
+    echo "║  📬 NEW TASKS (todo/)                                        ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
     
     for task in "$TODO_DIR"/*.md; do
         [ -f "$task" ] || continue
-        echo "--- $(basename "$task") ---"
-        head -40 "$task"
+        echo "  • $(basename "$task")"
+        head -15 "$task" | sed 's/^/    /'
         echo ""
     done
+    FOUND=1
+fi
+
+# ============================================================================
+# DOING - Tasks in progress
+# ============================================================================
+
+if [ -d "$DOING_DIR" ] && [ "$(ls -A "$DOING_DIR" 2>/dev/null)" ]; then
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  🔨 IN PROGRESS (doing/)                                     ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
     
-    echo "Run 'agent-task claim <filename>' to claim a task"
+    for task in "$DOING_DIR"/*.md; do
+        [ -f "$task" ] || continue
+        echo "  • $(basename "$task")"
+    done
     echo ""
-else
+    FOUND=1
+fi
+
+# ============================================================================
+# DONE - Recently completed (last 5)
+# ============================================================================
+
+if [ -d "$DONE_DIR" ] && [ "$(ls -A "$DONE_DIR" 2>/dev/null)" ]; then
     echo ""
-    echo "No new tasks."
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  ✅ RECENTLY DONE (done/)                                    ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    # Show last 5 completed
+    ls -t "$DONE_DIR"/*.md 2>/dev/null | head -5 | while read task; do
+        [ -f "$task" ] || continue
+        echo "  ✓ $(basename "$task")"
+    done
+    echo ""
+    FOUND=1
+fi
+
+# ============================================================================
+# Nothing found
+# ============================================================================
+
+if [ $FOUND -eq 0 ]; then
+    echo ""
+    echo "No tasks in queue."
     echo ""
 fi
+
+# ============================================================================
+# Actions
+# ============================================================================
+
+echo "Commands:"
+echo "  agent-task claim <filename>  - Move from todo to doing"
+echo "  agent-task complete <filename> - Move from doing to done"
+echo ""

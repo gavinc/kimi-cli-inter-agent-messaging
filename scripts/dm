@@ -2,10 +2,10 @@
 #
 # dm - Direct Message Notification
 # 
-# PURPOSE: Ping an agent to run 'cm' and check their queue.
+# PURPOSE: Notify an agent to check their queue.
 # 
-# IMPORTANT: This does NOT create messages. It ONLY sends a notification.
-# Create task files FIRST, then optionally use dm to notify.
+# The notification appears in the agent's context without breaking their flow.
+# The recipient runs 'cm' to see the actual tasks.
 #
 # Usage: dm <agent-name>
 # Example: dm testing-agent
@@ -18,7 +18,7 @@ if [ -z "$TARGET" ]; then
     echo "Usage: dm <agent-name>"
     echo "Example: dm testing-agent"
     echo ""
-    echo "NOTE: Create task file FIRST, then use dm to notify:"
+    echo "NOTE: Create task file FIRST:"
     echo "  echo 'task content' > .agents/queue/todo/YYYY-MM-DD-task.md"
     echo "  dm testing-agent"
     exit 1
@@ -38,9 +38,7 @@ fi
 
 PANE_ID=$(echo "$PANE_INFO" | awk '{print $1}')
 
-# Send notification
-tmux send-keys -t "$PANE_ID" C-c 2>/dev/null || true
-sleep 0.1
+# Send notification (appears in agent's context without interrupting)
 tmux send-keys -t "$PANE_ID" "📨 New task from ${AGENT_NAME:-sender}. Run: cm" Enter
 
-echo "✅ Notified @$TARGET to run 'cm'"
+echo "✅ Notified @$TARGET"

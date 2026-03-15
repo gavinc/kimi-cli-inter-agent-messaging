@@ -4,7 +4,10 @@ Deterministic inter-agent messaging for Kimi CLI. Coordinate multiple AI agents 
 
 ## The Pattern
 
-**ONE place for messages:** `.agents/queue/todo/`
+**Task queue in three states:**
+- `todo/` - New tasks waiting
+- `doing/` - Tasks in progress  
+- `done/` - Tasks completed
 
 ### Send a Message
 
@@ -25,44 +28,56 @@ Description of what needs to be done.
 - [ ] Thing 2
 EOF
 
-# Optional: Notify them to check
+# Notify them (appears in their context without interrupting)
 dm testing-agent
 ```
 
 ### Receive Messages
 
 ```bash
-# Run cm = Check messages
+# Run cm = Check all tasks
 cm
 
-# Output:
+# Output shows all three states:
 # ╔══════════════════════════════════════════════════════════════╗
-# ║  📬 NEW TASKS                                                ║
+# ║  📬 NEW TASKS (todo/)                                        ║
 # ╚══════════════════════════════════════════════════════════════╝
 # 
-# --- 2025-03-15-brief-desc.md ---
-# # Task Title
-# ...
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  🔨 IN PROGRESS (doing/)                                     ║
+# ╚══════════════════════════════════════════════════════════════╝
+#
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  ✅ RECENTLY DONE (done/)                                    ║
+# ╚══════════════════════════════════════════════════════════════╝
+```
+
+### Manage Tasks
+
+```bash
+# Claim a task (move todo → doing)
+agent-task claim 2025-03-15-brief-desc.md
+
+# Complete a task (move doing → done)
+agent-task complete 2025-03-15-brief-desc.md
 ```
 
 ## Commands
 
-| Command | Purpose | Use When |
-|---------|---------|----------|
-| `cm` | **Receive** messages | Session start, before going idle |
-| `dm <agent>` | **Notify** to run cm | After creating task file |
+| Command | Purpose |
+|---------|---------|
+| `cm` | Check all tasks (todo, doing, done) |
+| `dm <agent>` | Notify agent to check tasks |
+| `agent-task claim <file>` | Move task from todo to doing |
+| `agent-task complete <file>` | Move task from doing to done |
 
-## Critical Rules
+## Key Points
 
-1. **Create task file FIRST** - This IS the message
-2. **`dm` is optional** - Just a ping to run `cm`
-3. **Run `cm` to receive** - Only way to see messages
-
-## Why This Works
-
-- **Deterministic:** Files on disk don't disappear
-- **Single source:** One place to check
-- **Simple:** No .notifications, no complexity
+- **Create task file FIRST** - This IS the message
+- **`dm` is optional** - Just a notification that appears in context
+- **`dm` doesn't interrupt** - Message appears without breaking agent's flow
+- **Run `cm` to see all tasks** - Shows todo, doing, and recently done
+- **AGENT_NAME is optional** - Used by dm to identify sender
 
 ## Install
 
