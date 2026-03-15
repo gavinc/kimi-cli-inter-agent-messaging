@@ -1,49 +1,40 @@
 #!/bin/bash
 #
-# cm - Check messages (check messages queue)
+# cm - Check messages
+# 
+# SINGLE SOURCE OF TRUTH for inter-agent messaging.
+# Reads from ONE place: .agents/queue/todo/
+#
 # Usage: cm
 #
+# This is the ONLY way to receive messages. All agents MUST run this:
+#   1. At session start
+#   2. Before going idle
 
-# Try to find project root
+set -e
+
 cd "$(dirname "$0")/../.." 2>/dev/null || cd "$(pwd)"
 
 TODO_DIR=".agents/queue/todo"
-NOTIFICATIONS=".agents/.notifications"
 
-FOUND=0
-
-# Check for tasks
 if [ -d "$TODO_DIR" ] && [ "$(ls -A "$TODO_DIR" 2>/dev/null)" ]; then
-    echo "==============================================================="
-    echo "NEW TASKS"
-    echo "==============================================================="
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  📬 NEW TASKS                                                ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+    
     for task in "$TODO_DIR"/*.md; do
         [ -f "$task" ] || continue
-        echo ""
         echo "--- $(basename "$task") ---"
-        head -30 "$task"
+        head -40 "$task"
         echo ""
     done
-    FOUND=1
-fi
-
-# Check for notifications
-if [ -f "$NOTIFICATIONS" ] && [ -s "$NOTIFICATIONS" ]; then
-    echo "==============================================================="
-    echo "NOTIFICATIONS"
-    echo "==============================================================="
-    cat "$NOTIFICATIONS"
+    
+    echo "Run 'agent-task claim <filename>' to claim a task"
     echo ""
-    # Archive and clear
-    mkdir -p ".agents/.notifications-archive"
-    echo "--- $(date '+%Y-%m-%d %H:%M:%S') ---" >> ".agents/.notifications-archive/$(date '+%Y-%m-%d').log"
-    cat "$NOTIFICATIONS" >> ".agents/.notifications-archive/$(date '+%Y-%m-%d').log"
-    > "$NOTIFICATIONS"
-    FOUND=1
+else
+    echo ""
+    echo "No new tasks."
+    echo ""
 fi
-
-if [ $FOUND -eq 0 ]; then
-    echo "No new messages"
-fi
-
-exit 0
