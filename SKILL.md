@@ -1,219 +1,137 @@
 ---
 name: inter-agent-messaging
-description: Deterministic inter-agent messaging for AI agents. Global and project-specific task queues with config-driven project discovery. Version 3.0.
-compatibility: Requires tmux and kimi-cli. Agents run in separate tmux panes.
+description: Coordinate work between multiple AI agents using deterministic task queues. Global and project-specific queues with automatic discovery.
+compatibility: Requires agents to run in separate tmux panes. Tools must be in PATH.
 metadata:
   author: gavinc
   version: "3.0.0"
+  tools:
+    - cm
+    - agent-task
 ---
 
-# Inter-Agent Messaging Skill v3.0
+# Inter-Agent Messaging
 
-**Purpose:** Coordinate work between multiple AI agents with **deterministic** messaging that works the same from any directory.
+Coordinate work between multiple AI agents with deterministic task queues that work identically from any directory.
 
-**Core Principle:** Files on disk are the source of truth. Config-driven project discovery. Same output regardless of current directory.
+## When to Use This Skill
 
----
-
-## What's New in v3.0
-
-### Deterministic Output
-- `cm` shows **ALL queues** (global + all registered projects) from any directory
-- No more "where am I?" confusion - same output everywhere
-
-### Config-Driven Projects
-- Register projects once: `agent-task register-project /path`
-- Tools read from `~/.config/kimi/inter-agent-comms/projects`
-- No tool updates needed to add new projects
-
-### Global Queue
-- Cross-project tasks go in `~/.local/share/kimi/queue/`
-- Project-specific tasks stay in project `.agents/queue/`
-- Task IDs are unique across all queues
-
----
+Use this skill when:
+- Multiple agents need to coordinate on shared work
+- One agent needs to assign tasks to another
+- Agents need to track work state (todo/doing/done)
+- You need deterministic message visibility regardless of current directory
 
 ## Architecture
 
-```
-~/.local/bin/                          # Tools (symlinked from skill)
-├── cm -> /path/to/skill/scripts/cm
-└── agent-task -> /path/to/skill/scripts/agent-task
+This skill provides a **three-state task queue**:
+- `todo/` - New tasks waiting
+- `doing/` - Tasks in progress
+- `done/` - Tasks completed
 
-~/.local/share/kimi/queue/             # Global task queue
-├── todo/
-├── doing/
-└── done/
+**Two queue types:**
+1. **Global queue** (`~/.local/share/kimi/queue/`) - Cross-project tasks
+2. **Project queues** (`.agents/queue/`) - Project-specific tasks
 
-~/.config/kimi/inter-agent-messaging/
-└── projects                           # Registered project paths
-
-project-root/                          # Project-specific queue
-└── .agents/queue/
-    ├── todo/
-    ├── doing/
-    └── done/
-```
-
----
+**Deterministic:** Running `scripts/cm` shows ALL queues from any directory.
 
 ## Quick Start
 
-### 1. Check Your Messages (Anywhere)
+### Check Messages (from anywhere)
 
 ```bash
-# Same output from ANY directory
-cm
-
-# Output:
-# ╔══════════════════════════════════════════════════════════════╗
-# ║  🌐 GLOBAL QUEUE                                             ║
-# ╚══════════════════════════════════════════════════════════════╝
-# 📬 TODO:
-#    • global-task-id.md
-#
-# ╔══════════════════════════════════════════════════════════════╗
-# ║  📁 PROJECT QUEUES                                           ║
-# ╚══════════════════════════════════════════════════════════════╝
-# 📂 project-name [/full/path]
-# 📬 TODO:
-#    • project-task-id.md
-#      From: @agent-name 🔴 HIGH
-# 🔨 DOING:
-#    • task-in-progress.md
+scripts/cm
 ```
 
-### 2. Register Your Project
+Shows:
+- 🌐 Global queue (cross-project tasks)
+- 📁 All registered project queues
+- Tasks in todo/doing/done states
+- Priority badges (🔴 HIGH, 🔴 CRITICAL, 🟡 MEDIUM, 🟢 LOW)
 
-```bash
-# One-time registration
-agent-task register-project /path/to/your/project
-
-# Verify
-agent-task projects
-```
-
-### 3. Create Tasks
+### Create a Task
 
 ```bash
 # Global task (cross-project)
-agent-task create "Research auth libraries" lead
+scripts/agent-task create "Research auth libraries" lead
 
 # Project-specific task
-agent-task create --project /path/to/project "Fix login bug" tester
-
-# Or create in project queue if you're in the project:
-# (cd /path/to/project && agent-task create "Fix bug" tester)
+scripts/agent-task create --project /path/to/project "Fix login bug" tester
 ```
 
-### 4. Claim and Complete
+### Claim and Complete
 
 ```bash
-# Claim searches ALL queues automatically
-agent-task claim task-id-1234567890 tester
+# Claim a task (searches all queues automatically)
+scripts/agent-task claim task-id-1234567890 tester
 
-# Complete also searches ALL queues
-agent-task complete task-id-1234567890
+# Complete a task
+scripts/agent-task complete task-id-1234567890
 ```
-
----
 
 ## Commands Reference
 
-### `cm` - Check Messages
-
-Shows **all** queues: global + all registered projects.
-
-**Deterministic:** Same output from any directory.
-
-### `agent-task` - Task Management
-
-| Command | Purpose | Default Queue |
-|---------|---------|---------------|
-| `create <title> [agent]` | Create global task | Global |
-| `create --project <path> <title>` | Create project task | Specified project |
-| `claim <id> <agent>` | Claim task (searches all) | Finds automatically |
-| `complete <id>` | Complete task (searches all) | Finds automatically |
-| `list` | List all queues | Shows all |
-| `register-project <path>` | Register project | - |
-| `unregister-project <path>` | Remove project | - |
-| `projects` | List registered projects | - |
-
----
+| Command | Purpose |
+|---------|---------|
+| `scripts/cm` | Check ALL tasks (global + projects) |
+| `scripts/agent-task create <title> [agent]` | Create global task |
+| `scripts/agent-task create --project <path> <title>` | Create project task |
+| `scripts/agent-task claim <id> <agent>` | Claim task (searches all) |
+| `scripts/agent-task complete <id>` | Complete task (searches all) |
+| `scripts/agent-task list` | List all queues (summary) |
+| `scripts/agent-task register-project <path>` | Register project |
+| `scripts/agent-task unregister-project <path>` | Remove project |
+| `scripts/agent-task projects` | List registered projects |
 
 ## Complete Workflow Example
 
-### Chad (coding-agent) Creates Task for Tessa (testing-agent)
+### Chad (coding-agent) assigns work to Tessa (testing-agent)
 
 ```bash
-# Chad is in the project directory
-cd /home/user/projects/myapp
+# Chad creates a test task
+scripts/agent-task create --project /path/to/project "Test new auth flow" testing-agent
 
-# Chad creates a test task in the project queue
-agent-task create --project /home/user/projects/myapp "Test new auth flow" testing-agent
-
-# Output: [CREATED] Task: test-new-auth-flow-1234567890
-
-# Chad notifies Tessa (optional - appears in her context)
-dm testing-agent
+# Chad notifies Tessa (appears in her context without interrupting)
+scripts/dm testing-agent
 ```
 
-### Tessa Checks Messages
+### Tessa receives and completes work
 
 ```bash
-# Tessa runs cm from ANYWHERE
-cd /tmp  # anywhere
-cm
+# Tessa checks messages from anywhere
+scripts/cm
 
 # Sees in output:
-# 📂 myapp [/home/user/projects/myapp]
+# 📂 project-name [/path/to/project]
 # 📬 TODO:
 #    • test-new-auth-flow-1234567890.md
-#      From: testing-agent 🔴 HIGH
+#      From: @coding-agent 🔴 HIGH
 
-# Tessa claims it (searches all queues automatically)
-agent-task claim test-new-auth-flow-1234567890 testing-agent
+# Tessa claims the task
+scripts/agent-task claim test-new-auth-flow-1234567890 testing-agent
 
-# Output:
-# [OK] Task claimed: test-new-auth-flow-1234567890
-#    Agent: testing-agent
-#    Queue: /home/user/projects/myapp/.agents/queue
+# After testing, Tessa completes it
+scripts/agent-task complete test-new-auth-flow-1234567890
 ```
 
-### Tessa Completes Work
+## Project Registration
+
+Projects must be registered for automatic discovery:
 
 ```bash
-# After testing...
-agent-task complete test-new-auth-flow-1234567890
+# Register a project (one time)
+scripts/agent-task register-project /path/to/your/project
 
-# Task moves to done/ and appears in cm under ✅ DONE
+# View registered projects
+scripts/agent-task projects
+
+# Config file location
+~/.config/kimi/inter-agent-messaging/projects
 ```
-
----
-
-## Config File Format
-
-**Location:** `~/.config/kimi/inter-agent-comms/projects`
-
-```
-# One absolute path per line
-/home/user/projects/myapp
-/home/user/projects/api-service
-~/coding/another-project
-```
-
-Lines starting with `#` are comments.
-
-**Managed via commands:**
-```bash
-agent-task register-project /path/to/project    # Add
-agent-task unregister-project /path/to/project  # Remove
-agent-task projects                              # View
-```
-
----
 
 ## Task File Format
+
+Tasks are Markdown files with YAML frontmatter:
 
 ```markdown
 # Task: Test new auth flow
@@ -224,12 +142,11 @@ agent-task projects                              # View
 **Assignee:** testing-agent
 
 ## Description
-Test the new authentication flow implemented in PR #42.
+Test the new authentication flow.
 
 ## Acceptance Criteria
 - [ ] Login with valid credentials
 - [ ] Login with invalid credentials shows error
-- [ ] Password reset works
 
 ## Notes
 ---
@@ -238,107 +155,68 @@ Claimed by: testing-agent at 2025-03-16T13:05:00+00:00
 Completed at: 2025-03-16T13:30:00+00:00
 ```
 
----
+## Directory Structure
 
-## Why This Works
+```
+~/.local/share/kimi/queue/             # Global queue
+├── todo/
+├── doing/
+└── done/
 
-| Mechanism | Purpose | Persistence |
-|-----------|---------|-------------|
-| **Task files** | Message content | ✅ Disk (100% reliable) |
-| **`cm`** | Read all tasks | ✅ Deterministic output |
-| **`agent-task`** | State management | ✅ Config-driven |
-| **Project registry** | Queue discovery | ✅ Config file |
-| **File locking** | Coordination | ✅ Atomic mkdir |
+~/.config/kimi/inter-agent-messaging/
+└── projects                           # Registered project paths
 
-**Deterministic:** `cm` shows all queues from any directory. No context-dependent behavior.
-
----
-
-## Installation
-
-### Prerequisites
-
-- **tmux** installed
-- **kimi CLI** installed
-- **Git repo cloned** (this skill)
-
-### Setup
-
-```bash
-# 1. Clone the skill repo (or ensure it exists)
-git clone <repo-url> ~/.agents/skills/inter-agent-messaging
-# or use existing location
-
-# 2. Create symlinks to tools
-ln -s ~/.agents/skills/inter-agent-messaging/scripts/cm ~/.local/bin/cm
-ln -s ~/.agents/skills/inter-agent-messaging/scripts/agent-task ~/.local/bin/agent-task
-
-# 3. Ensure ~/.local/bin is in PATH
-export PATH="$HOME/.local/bin:$PATH"
-
-# 4. Create global queue directory
-mkdir -p ~/.local/share/kimi/queue/{todo,doing,done}
-
-# 5. Create config directory
-mkdir -p ~/.config/kimi/inter-agent-comms
-
-# 6. Register your projects
-agent-task register-project /path/to/project1
-agent-task register-project /path/to/project2
+project-root/                          # Project queue
+└── .agents/queue/
+    ├── todo/
+    ├── doing/
+    └── done/
 ```
 
----
+## Critical Rules
+
+1. **Always run `scripts/cm` at session start** - Shows all queues deterministically
+2. **Register projects before use** - `scripts/agent-task register-project /path`
+3. **Create task file FIRST** - This IS the message
+4. **Use `scripts/dm` for notifications** - Optional, non-interrupting
+5. **Task IDs are unique** - Across all queues, no collisions
+6. **Claim before working** - Moves todo → doing with file locking
+7. **Complete when done** - Moves doing → done
 
 ## Troubleshooting
 
-### "cm: command not found"
+### "scripts/cm: command not found"
 ```bash
-# Check symlink exists
-ls -la ~/.local/bin/cm
-
-# If not, create it:
-ln -s /path/to/skill/scripts/cm ~/.local/bin/cm
+# Ensure tools are in PATH or call with relative path
+export PATH="$HOME/.local/bin:$PATH"
+# or
+~/.config/agents/skills/inter-agent-messaging/scripts/cm
 ```
 
 ### "No project queues registered"
 ```bash
-# Register your projects
-agent-task register-project /path/to/your/project
+scripts/agent-task register-project /path/to/your/project
 ```
 
 ### "Task not found"
 - Task IDs are unique across all queues
-- `agent-task claim` and `complete` search ALL registered queues
-- Run `agent-task list` to see all tasks
+- `scripts/agent-task claim` searches ALL registered queues
+- Run `scripts/agent-task list` to see all tasks
 
 ### "Permission denied"
 ```bash
-# Make scripts executable
-chmod +x ~/.agents/skills/inter-agent-messaging/scripts/cm
-chmod +x ~/.agents/skills/inter-agent-messaging/scripts/agent-task
+chmod +x scripts/cm scripts/agent-task
 ```
 
----
+## Why This Works
 
-## Migration from v2.x
-
-### What's Different
-
-| v2.x | v3.0 |
-|------|------|
-| Context-dependent (`cm` showed current dir's queue) | Deterministic (`cm` shows all queues) |
-| Only project queues | Global + project queues |
-| Projects discovered by directory | Projects registered in config file |
-| `agent-task claim <filename>` | `agent-task claim <task-id>` (searches all) |
-
-### Migration Steps
-
-1. **Update tools:** Pull latest skill repo
-2. **Create symlinks:** Replace old files with symlinks (see Installation)
-3. **Register projects:** Run `agent-task register-project` for each project
-4. **Update workflows:** Use task IDs instead of filenames for claim/complete
-
----
+| Mechanism | Purpose | Reliability |
+|-----------|---------|-------------|
+| **Files on disk** | Message persistence | ✅ 100% reliable |
+| **Deterministic `scripts/cm`** | Same output anywhere | ✅ No context confusion |
+| **Config-driven projects** | Queue discovery | ✅ No code changes needed |
+| **File locking** | Coordination | ✅ Atomic mkdir |
+| **Task IDs** | Unique identification | ✅ Timestamp-based |
 
 ## Version
 
