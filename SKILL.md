@@ -1,223 +1,197 @@
 ---
-name: inter-agent-messaging
-description: Coordinate work between multiple AI agents using deterministic task queues. Global and project-specific queues with automatic discovery.
-compatibility: Requires agents to run in separate tmux panes. Tools must be in PATH.
+name: chad-flow
+description: Enforced workflow for Chad (coding-agent). Automatically runs queue checks at start and end of every session. Use /flow:chad-flow to invoke Chad with compliance enforcement.
+type: flow
 metadata:
   author: gavinc
   version: "3.0.0"
-  tools:
-    - cm
-    - agent-task
 ---
 
-# Inter-Agent Messaging
+# Chad Flow - Enforced Coding Agent Workflow
 
-Coordinate work between multiple AI agents with deterministic task queues that work identically from any directory.
+This flow skill enforces Chad's work protocol by automating queue checks at the beginning and end of every session.
 
-## When to Use This Skill
+## When to Use
 
-Use this skill when:
-- Multiple agents need to coordinate on shared work
-- One agent needs to assign tasks to another
-- Agents need to track work state (todo/doing/done)
-- You need deterministic message visibility regardless of current directory
+Use `/flow:chad-flow` instead of `kimi-chad` when you want:
+- Automatic queue status check on start
+- Mandatory compliance verification on completion
+- Guaranteed testing task creation
+- Proper handoff documentation
 
-## Architecture
-
-This skill provides a **three-state task queue**:
-- `todo/` - New tasks waiting
-- `doing/` - Tasks in progress
-- `done/` - Tasks completed
-
-**Two queue types:**
-1. **Global queue** (`~/.local/share/kimi/queue/`) - Cross-project tasks
-2. **Project queues** (`.agents/queue/`) - Project-specific tasks
-
-**Deterministic:** Running `scripts/cm` shows ALL queues from any directory.
-
-## Quick Start
-
-### Check Messages (from anywhere)
+## Usage
 
 ```bash
-scripts/cm
+# Start enforced workflow
+/flow:chad-flow write the authentication middleware
+
+# Or just start the flow, then tell me what to do
+/flow:chad-flow
+> write the authentication middleware
 ```
 
-Shows:
-- 🌐 Global queue (cross-project tasks)
-- 📁 All registered project queues
-- Tasks in todo/doing/done states
-- Priority badges (🔴 HIGH, 🔴 CRITICAL, 🟡 MEDIUM, 🟢 LOW)
+## Flow Diagram
 
-### Create a Task
-
-```bash
-# Global task (cross-project)
-scripts/agent-task create "Research auth libraries" lead
-
-# Project-specific task
-scripts/agent-task create --project /path/to/project "Fix login bug" tester
+```mermaid
+flowchart TD
+    A([BEGIN]) --> B[Run cm and report queue status]
+    B --> C{Tasks waiting?}
+    C -->|Yes| D[Ask user: Pick up existing task or start new?]
+    C -->|No| E[Wait for user's instruction]
+    D --> F[User provides instruction]
+    E --> F
+    F --> G[Execute work following all coding protocols]
+    G --> H{Work complete?}
+    H -->|Yes| I[Run cm - check current state]
+    I --> J[Verify: Task moved to done?]
+    J -->|No| K[Move task to done/ or ask user about incomplete work]
+    J -->|Yes| L[Verify: Testing task created for Tessa?]
+    L -->|No| M[Create testing task: agent-task create --project /path "Test: [Feature]" testing-agent]
+    L -->|Yes| N[Verify: Handoff documented?]
+    M --> N
+    K --> N
+    N -->|No| O[Create handoff in .agents/handoffs/]
+    N -->|Yes| P[Update pane title to chad | idle | 📬N]
+    O --> P
+    P --> Q{User has more work?}
+    Q -->|Yes| F
+    Q -->|No| R([END])
 ```
 
-### Claim and Complete
+## Alternative D2 Format
 
-```bash
-# Claim a task (searches all queues automatically)
-scripts/agent-task claim task-id-1234567890 tester
+```d2
+BEGIN -> check_queue -> has_work -> get_instruction -> do_work -> check_complete
+BEGIN: |md
+  # BEGIN
+  
+  Run `cm` and report queue status to user.
+  Check for tasks in todo/ and doing/.
+|
 
-# Complete a task
-scripts/agent-task complete task-id-1234567890
+check_queue: Run `cm` and report queue status
+
+has_work: |md
+  # Check for Work
+  
+  Are there tasks in the queue?
+  - If yes: Ask user whether to pick up existing task or start new
+  - If no: Wait for user's instruction
+|
+
+get_instruction: Receive user's instruction
+
+do_work: |md
+  # Execute Work
+  
+  Follow all coding protocols:
+  - Read relevant code and specs
+  - Consider testing implications
+  - Implement following project patterns
+  - Run npm run build to verify
+  - Document decisions
+|
+
+check_complete: |md
+  # Work Complete Verification
+  
+  Before completing, verify:
+  1. Task moved to done/?
+  2. Testing task created for Tessa?
+  3. Handoff documented?
+  4. Pane title updated?
+  
+  If any check fails, complete it now.
+|
+
+check_complete -> more_work: All checks passed
+more_work: User has more work?
+more_work -> get_instruction: Yes
+more_work -> END: No
+
+END: |md
+  # END
+  
+  Run `cm` final check.
+  Update pane title to "chad | idle | 📬N".
+  Session complete.
+|
 ```
 
-## Commands Reference
+## Decision Points
 
-| Command | Purpose |
-|---------|---------|
-| `scripts/cm` | Check ALL tasks (global + projects) |
-| `scripts/agent-task create <title> [agent]` | Create global task |
-| `scripts/agent-task create --project <path> <title>` | Create project task |
-| `scripts/agent-task claim <id> <agent>` | Claim task (searches all) |
-| `scripts/agent-task complete <id>` | Complete task (searches all) |
-| `scripts/agent-task list` | List all queues (summary) |
-| `scripts/agent-task register-project <path>` | Register project |
-| `scripts/agent-task unregister-project <path>` | Remove project |
-| `scripts/agent-task projects` | List registered projects |
-
-## Complete Workflow Example
-
-### Chad (coding-agent) assigns work to Tessa (testing-agent)
-
-```bash
-# Chad creates a test task
-scripts/agent-task create --project /path/to/project "Test new auth flow" testing-agent
-
-# Chad notifies Tessa (appears in her context without interrupting)
-scripts/dm testing-agent
-```
-
-### Tessa receives and completes work
-
-```bash
-# Tessa checks messages from anywhere
-scripts/cm
-
-# Sees in output:
-# 📂 project-name [/path/to/project]
-# 📬 TODO:
-#    • test-new-auth-flow-1234567890.md
-#      From: @coding-agent 🔴 HIGH
-
-# Tessa claims the task
-scripts/agent-task claim test-new-auth-flow-1234567890 testing-agent
-
-# After testing, Tessa completes it
-scripts/agent-task complete test-new-auth-flow-1234567890
-```
-
-## Project Registration
-
-Projects must be registered for automatic discovery:
-
-```bash
-# Register a project (one time)
-scripts/agent-task register-project /path/to/your/project
-
-# View registered projects
-scripts/agent-task projects
-
-# Config file location
-~/.config/kimi/inter-agent-messaging/projects
-```
-
-## Task File Format
-
-Tasks are Markdown files with YAML frontmatter:
-
-```markdown
-# Task: Test new auth flow
-
-**ID:** test-new-auth-flow-1234567890
-**Created:** 2025-03-16T13:00:00+00:00
-**Status:** pending
-**Assignee:** testing-agent
-
-## Description
-Test the new authentication flow.
-
-## Acceptance Criteria
-- [ ] Login with valid credentials
-- [ ] Login with invalid credentials shows error
-
-## Notes
----
-Claimed by: testing-agent at 2025-03-16T13:05:00+00:00
----
-Completed at: 2025-03-16T13:30:00+00:00
-```
-
-## Directory Structure
+At decision nodes, I will output my choice:
 
 ```
-~/.local/share/kimi/queue/             # Global queue
-├── todo/
-├── doing/
-└── done/
-
-~/.config/kimi/inter-agent-messaging/
-└── projects                           # Registered project paths
-
-project-root/                          # Project queue
-└── .agents/queue/
-    ├── todo/
-    ├── doing/
-    └── done/
+<choice>begin_work</choice>
+<choice>create_testing_task</choice>
+<choice>end_session</choice>
 ```
 
-## Critical Rules
+## Commands Used
 
-1. **Always run `scripts/cm` at session start** - Shows all queues deterministically
-2. **Register projects before use** - `scripts/agent-task register-project /path`
-3. **Create task file FIRST** - This IS the message
-4. **Use `scripts/dm` for notifications** - Optional, non-interrupting
-5. **Task IDs are unique** - Across all queues, no collisions
-6. **Claim before working** - Moves todo → doing with file locking
-7. **Complete when done** - Moves doing → done
+| Command | When | Purpose |
+|---------|------|---------|
+| `cm` | Start, End | Check all queues |
+| `agent-task claim <id> chad` | Beginning | Claim task from todo |
+| `agent-task create --project /path "Test: [Feature]" testing-agent` | End | Create testing task |
+| `agent-task complete <id>` | End | Mark task done |
+| `tmux select-pane -T "chad | busy"` | Start | Set pane title |
+| `tmux select-pane -T "chad | idle | 📬N"` | End | Set idle title |
 
-## Troubleshooting
+## Why Use This Flow?
 
-### "scripts/cm: command not found"
-```bash
-# Ensure tools are in PATH or call with relative path
-export PATH="$HOME/.local/bin:$PATH"
-# or
-~/.config/agents/skills/inter-agent-messaging/scripts/cm
-```
+Without this flow:
+- I might forget to check messages
+- I might not create testing tasks
+- I might leave tasks in doing/
+- Inconsistent handoffs
 
-### "No project queues registered"
-```bash
-scripts/agent-task register-project /path/to/your/project
-```
+With this flow:
+- ✅ Queue check is **mandatory** at start
+- ✅ Testing task creation is **mandatory** at end
+- ✅ Handoff documentation is **enforced**
+- ✅ Pane title updates are **automated**
+- ✅ I **cannot** end the session without completing all steps
 
-### "Task not found"
-- Task IDs are unique across all queues
-- `scripts/agent-task claim` searches ALL registered queues
-- Run `scripts/agent-task list` to see all tasks
+## Comparison
 
-### "Permission denied"
-```bash
-chmod +x scripts/cm scripts/agent-task
-```
+| | Regular `kimi-chad` | `/flow:chad-flow` |
+|-|---------------------|-------------------|
+| Queue check | Optional (I often forget) | **Mandatory** |
+| Testing tasks | Often skipped | **Enforced** |
+| Handoffs | Inconsistent | **Required** |
+| Pane title | Rarely updated | **Automated** |
+| End ritual | None | **Structured** |
 
-## Why This Works
+## Example Session
 
-| Mechanism | Purpose | Reliability |
-|-----------|---------|-------------|
-| **Files on disk** | Message persistence | ✅ 100% reliable |
-| **Deterministic `scripts/cm`** | Same output anywhere | ✅ No context confusion |
-| **Config-driven projects** | Queue discovery | ✅ No code changes needed |
-| **File locking** | Coordination | ✅ Atomic mkdir |
-| **Task IDs** | Unique identification | ✅ Timestamp-based |
+**User:** `/flow:chad-flow implement user authentication`
 
-## Version
+**Me (step 1 - BEGIN):** Running `cm`...
+[cm output]
+📬 1 task waiting: test-v3-deployment
+Do you want me to:
+1. Pick up existing task: test-v3-deployment
+2. Start new task: implement user authentication
 
-v3.0.0 - Deterministic inter-agent messaging with global queues and config-driven project discovery
+**User:** `2`
+
+**Me (step 2 - do_work):** [Implements authentication...]
+
+**Me (step 3 - check_complete):** Work complete. Running verification:
+- ✅ Code implemented
+- ✅ Build passes
+- ⚠️  Testing task not created yet
+- Creating testing task: `agent-task create --project ~/coding/vercel-chat/monorepo "Test: User authentication" testing-agent`
+- ✅ Testing task created
+- ⚠️  Handoff not documented
+- Creating handoff in `.agents/handoffs/2025-03-16-user-authentication.md`
+- ✅ Handoff created
+- Updating pane title to "chad | idle | 📬1"
+
+**Me (step 4 - END or more_work):** Session complete. Task in done/, testing task queued, handoff documented. More work? (yes/no)
+
+**User:** `no`
+
+**Me:** [END] Session ended. Run `/flow:chad-flow` for next session.

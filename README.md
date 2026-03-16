@@ -34,6 +34,55 @@ agent-task claim task-id-1234567890 tester
 agent-task complete task-id-1234567890
 ```
 
+## 🔒 Enforced Workflows (Optional but Recommended)
+
+**Problem:** Agents sometimes forget to check messages, create testing tasks, or document handoffs.
+
+**Solution:** Use **Flow Skills** for automatic enforcement.
+
+### Chad with Enforcement
+
+```bash
+# Instead of: kimi-chad
+# Use: /flow:chad-flow
+
+/flow:chad-flow implement the authentication middleware
+```
+
+**What happens:**
+1. ✅ **Auto-runs `cm`** at start (can't forget)
+2. ✅ **Auto-creates testing tasks** at end (can't skip)
+3. ✅ **Auto-documents handoffs** (must complete)
+4. ✅ **Auto-updates pane title** (tracks status)
+
+### Tessa with Enforcement
+
+```bash
+# Instead of: kimi-tessa  
+# Use: /flow:tessa-flow
+
+/flow:tessa-flow test the new authentication flow
+```
+
+**What happens:**
+1. ✅ **Auto-runs `cm`** at start
+2. ✅ **Auto-claims tasks** from queue
+3. ✅ **Auto-documents test results** in handoffs/
+4. ✅ **Auto-DMs Chad** when complete
+5. ✅ **Verifies 4 completion requirements** before ending
+
+### Why Flow Skills Work
+
+| Without Flow | With Flow |
+|--------------|-----------|
+| `cm` check optional | `cm` check **mandatory** |
+| Testing tasks often skipped | Testing tasks **enforced** |
+| Handoffs inconsistent | Handoffs **required** |
+| No completion verification | **4-step verification** |
+| Agent decides when done | **Flow decides when done** |
+
+**Flow skills bind me to the workflow.** I cannot skip steps because the flow controls the conversation.
+
 ## Installation
 
 There are **two separate installations**:
