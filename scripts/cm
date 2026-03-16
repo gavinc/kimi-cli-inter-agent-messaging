@@ -1,95 +1,182 @@
 #!/bin/bash
 #
-# cm - Check messages
+# cm - Check messages (config-driven, deterministic)
 # 
-# Shows task queue in three states: todo, doing, done
+# Shows ALL task queues: global + registered project queues
+# Deterministic: same output regardless of current directory
+#
+# Projects are registered in: ~/.config/kimi/inter-agent-comms/projects
 # 
 # Usage: cm
 
 set -e
 
-cd "$(dirname "$0")/../.." 2>/dev/null || cd "$(pwd)"
-
-TODO_DIR=".agents/queue/todo"
-DOING_DIR=".agents/queue/doing"
-DONE_DIR=".agents/queue/done"
-
-FOUND=0
-
 # ============================================================================
-# TODO - New tasks waiting
+# CONFIG
 # ============================================================================
 
-if [ -d "$TODO_DIR" ] && [ "$(ls -A "$TODO_DIR" 2>/dev/null)" ]; then
-    echo ""
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║  📬 NEW TASKS (todo/)                                        ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo ""
+PROJECTS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/kimi/inter-agent-comms/projects"
+GLOBAL_QUEUE="$HOME/.local/share/kimi/queue"
+
+# Ensure global queue exists
+mkdir -p "$GLOBAL_QUEUE"/{todo,doing,done}
+
+# Helper: extract field from task file
+get_field() {
+    local file="$1"
+    local field="$2"
+    grep -m1 "^\*\*${field}:\*\*" "$file" 2>/dev/null | sed "s/\*\*${field}:\*\*//" | xargs || echo ""
+}
+
+get_sender() { get_field "$1" "From"; }
+get_priority() { get_field "$1" "Priority"; }
+
+# ============================================================================
+# DISCOVER PROJECTS
+# ============================================================================
+
+discover_projects() {
+    # Read from config file (ignore comments and empty lines)
+    if [ -f "$PROJECTS_FILE" ]; then
+        grep -v '^#' "$PROJECTS_FILE" 2>/dev/null | grep -v '^$' | while read -r path; do
+            # Expand ~ to $HOME
+            eval echo "$path"
+        done
+    fi
+}
+
+# ============================================================================
+# DISPLAY QUEUE
+# ============================================================================
+
+show_queue() {
+    local queue_path="$1"
+    local queue_name="$2"
+    local todo_dir="$queue_path/todo"
+    local doing_dir="$queue_path/doing"
+    local done_dir="$queue_path/done"
     
-    for task in "$TODO_DIR"/*.md; do
-        [ -f "$task" ] || continue
-        echo "  • $(basename "$task")"
-        head -15 "$task" | sed 's/^/    /'
+    local found=0
+    
+    # TODO tasks
+    if [ -d "$todo_dir" ] && [ "$(ls -A "$todo_dir" 2>/dev/null)" ]; then
         echo ""
-    done
-    FOUND=1
-fi
-
-# ============================================================================
-# DOING - Tasks in progress
-# ============================================================================
-
-if [ -d "$DOING_DIR" ] && [ "$(ls -A "$DOING_DIR" 2>/dev/null)" ]; then
-    echo ""
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║  🔨 IN PROGRESS (doing/)                                     ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo ""
+        echo "📬 TODO:"
+        for task in "$todo_dir"/*.md; do
+            [ -f "$task" ] || continue
+            local basename=$(basename "$task")
+            local sender=$(get_sender "$task")
+            local priority=$(get_priority "$task" | tr '[:lower:]' '[:upper:]')
+            
+            # Show priority badge
+            local badge=""
+            case "$priority" in
+                CRITICAL|HIGH) badge=" 🔴 $priority" ;;
+                MEDIUM) badge=" 🟡 $priority" ;;
+                LOW) badge=" 🟢 $priority" ;;
+            esac
+            
+            echo "   • $basename"
+            [ -n "$sender" ] && echo "     From: $sender${badge}"
+            found=1
+        done
+    fi
     
-    for task in "$DOING_DIR"/*.md; do
-        [ -f "$task" ] || continue
-        echo "  • $(basename "$task")"
-    done
-    echo ""
-    FOUND=1
-fi
-
-# ============================================================================
-# DONE - Recently completed (last 5)
-# ============================================================================
-
-if [ -d "$DONE_DIR" ] && [ "$(ls -A "$DONE_DIR" 2>/dev/null)" ]; then
-    echo ""
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║  ✅ RECENTLY DONE (done/)                                    ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo ""
+    # DOING tasks
+    if [ -d "$doing_dir" ] && [ "$(ls -A "$doing_dir" 2>/dev/null)" ]; then
+        echo ""
+        echo "🔨 DOING:"
+        for task in "$doing_dir"/*.md; do
+            [ -f "$task" ] || continue
+            local basename=$(basename "$task")
+            local sender=$(get_sender "$task")
+            echo "   • $basename"
+            [ -n "$sender" ] && echo "     From: $sender"
+            found=1
+        done
+    fi
     
-    # Show last 5 completed
-    ls -t "$DONE_DIR"/*.md 2>/dev/null | head -5 | while read task; do
-        [ -f "$task" ] || continue
-        echo "  ✓ $(basename "$task")"
-    done
-    echo ""
-    FOUND=1
+    # DONE tasks (last 3 only)
+    if [ -d "$done_dir" ] && [ "$(ls -A "$done_dir" 2>/dev/null)" ]; then
+        local done_count=$(ls -1 "$done_dir"/*.md 2>/dev/null | wc -l)
+        if [ "$done_count" -gt 0 ]; then
+            echo ""
+            echo "✅ DONE (recent):"
+            ls -t "$done_dir"/*.md 2>/dev/null | head -3 | while read task; do
+                [ -f "$task" ] || continue
+                local basename=$(basename "$task")
+                echo "   ✓ $basename"
+            done
+            found=1
+        fi
+    fi
+    
+    return $((1 - found))
+}
+
+# ============================================================================
+# GLOBAL QUEUE
+# ============================================================================
+
+GLOBAL_FOUND=0
+
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  🌐 GLOBAL QUEUE                                             ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+
+if show_queue "$GLOBAL_QUEUE" "global"; then
+    GLOBAL_FOUND=1
+else
+    echo "   (empty)"
 fi
 
 # ============================================================================
-# Nothing found
+# PROJECT QUEUES
 # ============================================================================
 
-if [ $FOUND -eq 0 ]; then
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  📁 PROJECT QUEUES                                           ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+
+PROJECTS_FOUND=0
+while IFS= read -r project_path; do
+    # Skip comments and empty lines
+    [[ "$project_path" =~ ^#.*$ ]] && continue
+    [ -z "$project_path" ] && continue
+    
+    # Expand ~ to $HOME
+    eval project_path="$project_path"
+    
+    if [ -d "$project_path/.agents/queue" ]; then
+        PROJECTS_FOUND=$((PROJECTS_FOUND + 1))
+        echo ""
+        echo "📂 $(basename "$project_path") [$project_path]"
+        if ! show_queue "$project_path/.agents/queue" "$(basename "$project_path")"; then
+            echo "   (empty)"
+        fi
+    fi
+done < <(cat "$PROJECTS_FILE" 2>/dev/null || echo "")
+
+if [ "$PROJECTS_FOUND" -eq 0 ]; then
     echo ""
-    echo "No tasks in queue."
-    echo ""
+    echo "   No project queues registered."
+    echo "   Register a project: agent-task register-project /path/to/project"
 fi
 
 # ============================================================================
-# Actions
+# SUMMARY & COMMANDS
 # ============================================================================
 
-echo "Commands:"
-echo "  agent-task claim <filename>  - Move from todo to doing"
-echo "  agent-task complete <filename> - Move from doing to done"
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  COMMANDS                                                    ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "  agent-task list                           - List all tasks"
+echo "  agent-task create <title> [agent]         - Create global task"
+echo "  agent-task register-project <path>        - Register project queue"
+echo "  agent-task claim <id> <agent>             - Claim a task"
+echo "  agent-task complete <id>                  - Complete a task"
 echo ""

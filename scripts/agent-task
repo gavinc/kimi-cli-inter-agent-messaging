@@ -1,55 +1,100 @@
 #!/bin/bash
 #
-# agent-task - Task queue management with file locking for multi-agent coordination
+# agent-task - Task queue management (config-driven, deterministic)
+# 
+# Operates on GLOBAL queue by default for predictability.
+# Use --project flag or register projects for automatic discovery.
+#
+# Config file: ~/.config/kimi/inter-agent-comms/projects
+#
 # Usage: agent-task <command> [args]
-#
-# Commands:
-#   claim <task-id> <agent-name>     - Claim a task (fails if already claimed)
-#   unclaim <task-id>               - Release a task claim
-#   list                            - List all tasks with status
-#   create <title> <agent>          - Create new task file
-#   complete <task-id>              - Mark task as complete (moves to done/)
-#
 
 set -e
 
-# Configuration
-QUEUE_DIR=".agents/queue"
-TODO_DIR="$QUEUE_DIR/todo"
-DOING_DIR="$QUEUE_DIR/doing"
-DONE_DIR="$QUEUE_DIR/done"
-LOCK_DIR="$QUEUE_DIR/.locks"
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-# Ensure directories exist
-mkdir -p "$TODO_DIR" "$DOING_DIR" "$DONE_DIR" "$LOCK_DIR"
+PROJECTS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/kimi/inter-agent-comms/projects"
+GLOBAL_QUEUE="$HOME/.local/share/kimi/queue"
 
-# Generate lock file path for a task
+# Default queue (global)
+QUEUE_ROOT="$GLOBAL_QUEUE"
+QUEUE_TYPE="GLOBAL"
+
+# Ensure global queue exists
+mkdir -p "$GLOBAL_QUEUE"/{todo,doing,done,.locks}
+
+# ============================================================================
+# ARGUMENT PARSING
+# ============================================================================
+
+PROJECT_PATH=""
+ARGS=()
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --project)
+                PROJECT_PATH="$2"
+                shift 2
+                ;;
+            --project=*)
+                PROJECT_PATH="${1#*=}"
+                shift
+                ;;
+            *)
+                ARGS+=("$1")
+                shift
+                ;;
+        esac
+    done
+    
+    # Set project queue if specified
+    if [ -n "$PROJECT_PATH" ]; then
+        QUEUE_ROOT="$PROJECT_PATH/.agents/queue"
+        QUEUE_TYPE="PROJECT ($(basename "$PROJECT_PATH"))"
+        # Re-init directories for project
+        TODO_DIR="$QUEUE_ROOT/todo"
+        DOING_DIR="$QUEUE_ROOT/doing"
+        DONE_DIR="$QUEUE_ROOT/done"
+        LOCK_DIR="$QUEUE_ROOT/.locks"
+        mkdir -p "$TODO_DIR" "$DOING_DIR" "$DONE_DIR" "$LOCK_DIR"
+    fi
+}
+
+# ============================================================================
+# QUEUE DIRECTORIES (set after parse_args if needed)
+# ============================================================================
+
+TODO_DIR="$QUEUE_ROOT/todo"
+DOING_DIR="$QUEUE_ROOT/doing"
+DONE_DIR="$QUEUE_ROOT/done"
+LOCK_DIR="$QUEUE_ROOT/.locks"
+
+# ============================================================================
+# LOCKING
+# ============================================================================
+
 lock_file() {
     local task_id="$1"
     echo "$LOCK_DIR/${task_id}.lock"
 }
 
-# Try to acquire exclusive lock (non-blocking)
-# Returns 0 if lock acquired, 1 if already locked
 try_lock() {
     local task_id="$1"
     local agent="$2"
     local lockfile=$(lock_file "$task_id")
     
-    # Use mkdir for atomic lock creation (POSIX-compliant)
     if mkdir "$lockfile" 2>/dev/null; then
-        # Lock acquired - write metadata
         echo "$agent" > "$lockfile/owner"
         echo "$(date -Iseconds)" > "$lockfile/claimed_at"
         echo "$$" > "$lockfile/pid"
         return 0
     else
-        # Lock exists - check if stale
         if [ -f "$lockfile/pid" ]; then
-            local pid
-            pid=$(cat "$lockfile/pid")
+            local pid=$(cat "$lockfile/pid")
             if ! kill -0 "$pid" 2>/dev/null; then
-                # Stale lock - previous agent died
                 echo "[!] Stale lock detected for $task_id, reclaiming..."
                 rm -rf "$lockfile"
                 mkdir "$lockfile"
@@ -63,14 +108,12 @@ try_lock() {
     fi
 }
 
-# Release lock
 unlock() {
     local task_id="$1"
     local lockfile=$(lock_file "$task_id")
     rm -rf "$lockfile"
 }
 
-# Get lock owner
 lock_owner() {
     local task_id="$1"
     local lockfile=$(lock_file "$task_id")
@@ -81,151 +124,202 @@ lock_owner() {
     fi
 }
 
-# Generate task ID from title
+# ============================================================================
+# PROJECT REGISTRY
+# ============================================================================
+
+register_project() {
+    local project_path="$1"
+    
+    if [ -z "$project_path" ]; then
+        echo "Usage: agent-task register-project <path>"
+        exit 1
+    fi
+    
+    # Resolve to absolute path
+    project_path=$(cd "$project_path" 2>/dev/null && pwd || echo "$project_path")
+    
+    if [ ! -d "$project_path" ]; then
+        echo "[!] Directory not found: $project_path"
+        exit 1
+    fi
+    
+    # Create queue directory if it doesn't exist
+    mkdir -p "$project_path/.agents/queue"/{todo,doing,done,.locks}
+    
+    # Ensure config directory exists
+    mkdir -p "$(dirname "$PROJECTS_FILE")"
+    
+    # Check if already registered
+    if [ -f "$PROJECTS_FILE" ] && grep -q "^$project_path$" "$PROJECTS_FILE" 2>/dev/null; then
+        echo "[INFO] Project already registered: $project_path"
+        return 0
+    fi
+    
+    # Add to registry
+    echo "$project_path" >> "$PROJECTS_FILE"
+    echo "[OK] Project registered: $project_path"
+    echo "   Config: $PROJECTS_FILE"
+    echo "   Queue: $project_path/.agents/queue"
+}
+
+unregister_project() {
+    local project_path="$1"
+    
+    if [ -z "$project_path" ]; then
+        echo "Usage: agent-task unregister-project <path>"
+        exit 1
+    fi
+    
+    if [ ! -f "$PROJECTS_FILE" ]; then
+        echo "[!] No projects registered"
+        exit 1
+    fi
+    
+    # Remove from registry
+    grep -v "^$project_path$" "$PROJECTS_FILE" > "$PROJECTS_FILE.tmp" && mv "$PROJECTS_FILE.tmp" "$PROJECTS_FILE"
+    echo "[OK] Project unregistered: $project_path"
+}
+
+list_projects() {
+    echo "Registered projects:"
+    echo ""
+    
+    if [ ! -f "$PROJECTS_FILE" ] || [ ! -s "$PROJECTS_FILE" ]; then
+        echo "   (none)"
+        echo ""
+        echo "Register a project: agent-task register-project /path/to/project"
+        return
+    fi
+    
+    local num=1
+    while IFS= read -r path; do
+        [[ "$path" =~ ^#.*$ ]] && continue
+        [ -z "$path" ] && continue
+        
+        # Expand ~ to $HOME
+        eval path="$path"
+        
+        local status="✓"
+        [ ! -d "$path/.agents/queue" ] && status="✗ (no queue)"
+        
+        echo "   $num. $path $status"
+        num=$((num + 1))
+    done < "$PROJECTS_FILE"
+    echo ""
+}
+
+# ============================================================================
+# TASK DISCOVERY
+# ============================================================================
+
+discover_queues() {
+    local queues=("$GLOBAL_QUEUE")
+    
+    # Add registered project queues
+    if [ -f "$PROJECTS_FILE" ]; then
+        while IFS= read -r path; do
+            [[ "$path" =~ ^#.*$ ]] && continue
+            [ -z "$path" ] && continue
+            eval path="$path"
+            [ -d "$path/.agents/queue" ] && queues+=("$path/.agents/queue")
+        done < "$PROJECTS_FILE"
+    fi
+    
+    echo "${queues[@]}"
+}
+
+find_task() {
+    local task_id="$1"
+    
+    for queue in $(discover_queues); do
+        if [ -f "$queue/todo/${task_id}.md" ]; then
+            echo "$queue:todo"
+            return 0
+        fi
+        if [ -f "$queue/doing/${task_id}.md" ]; then
+            echo "$queue:doing"
+            return 0
+        fi
+    done
+    
+    return 1
+}
+
+# ============================================================================
+# COMMANDS
+# ============================================================================
+
 task_id() {
     local title="$1"
     echo "$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')-$(date +%s)"
 }
 
-# List all tasks
 list_tasks() {
     echo "==============================================================="
-    echo "TASK QUEUE"
+    echo "TASK QUEUES"
     echo "==============================================================="
     
-    # TODO tasks
+    # Global queue
     echo ""
-    echo "[TODO] Waiting:"
-    local todo_count=0
-    for task in "$TODO_DIR"/*.md; do
-        [ -e "$task" ] || continue  # Skip if no files match glob
-        local basename
-        basename=$(basename "$task" .md)
-        # Check if locked
-        local lockfile
-        lockfile=$(lock_file "$basename")
-        if [ -d "$lockfile" ]; then
-            local owner
-            owner=$(lock_owner "$basename")
-            echo "   [LOCKED] $basename (claimed by $owner)"
-        else
-            echo "   [OPEN] $basename"
-        fi
-        todo_count=$((todo_count + 1))
-    done
-    if [ "$todo_count" -eq 0 ]; then
-        echo "   (empty)"
+    echo "🌐 GLOBAL: ~/.local/share/kimi/queue"
+    list_queue_contents "$GLOBAL_QUEUE"
+    
+    # Registered project queues
+    if [ -f "$PROJECTS_FILE" ]; then
+        while IFS= read -r path; do
+            [[ "$path" =~ ^#.*$ ]] && continue
+            [ -z "$path" ] && continue
+            eval path="$path"
+            
+            if [ -d "$path/.agents/queue" ]; then
+                echo ""
+                echo "📁 $(basename "$path"): $path/.agents/queue"
+                list_queue_contents "$path/.agents/queue"
+            fi
+        done < "$PROJECTS_FILE"
     fi
     
-    # DOING tasks
     echo ""
-    echo "[DOING] In progress:"
-    local doing_count=0
-    for task in "$DOING_DIR"/*.md; do
-        [ -e "$task" ] || continue  # Skip if no files match glob
-        local basename
-        basename=$(basename "$task" .md)
-        local owner
-        owner=$(lock_owner "$basename")
-        if [ -n "$owner" ]; then
-            echo "   [WORK] $basename ($owner)"
-        else
-            echo "   [WORK] $basename (orphaned)"
-        fi
-        doing_count=$((doing_count + 1))
-    done
-    if [ "$doing_count" -eq 0 ]; then
-        echo "   (empty)"
-    fi
+    echo "==============================================================="
+}
+
+list_queue_contents() {
+    local queue="$1"
+    local todo_count=$(ls -1 "$queue/todo"/*.md 2>/dev/null | wc -l)
+    local doing_count=$(ls -1 "$queue/doing"/*.md 2>/dev/null | wc -l)
+    local done_count=$(ls -1 "$queue/done"/*.md 2>/dev/null | wc -l)
+    local has_tasks=0
     
-    # DONE tasks
-    echo ""
-    echo "[DONE] Completed:"
-    local done_count
-    done_count=$(ls -1 "$DONE_DIR"/*.md 2>/dev/null | wc -l)
+    if [ "$todo_count" -gt 0 ]; then
+        echo "   📬 todo: $todo_count"
+        has_tasks=1
+    fi
+    if [ "$doing_count" -gt 0 ]; then
+        echo "   🔨 doing: $doing_count"
+        has_tasks=1
+    fi
     if [ "$done_count" -gt 0 ]; then
-        echo "   $done_count task(s) completed"
-    else
+        echo "   ✅ done: $done_count"
+        has_tasks=1
+    fi
+    
+    if [ "$has_tasks" -eq 0 ]; then
         echo "   (empty)"
     fi
-    
-    echo ""
-    echo "==============================================================="
 }
 
-# Claim a task
-claim_task() {
-    local task_id="$1"
-    local agent="$2"
-    
-    if [ -z "$task_id" ] || [ -z "$agent" ]; then
-        echo "Usage: agent-task claim <task-id> <agent-name>"
-        exit 1
-    fi
-    
-    local task_file="$TODO_DIR/${task_id}.md"
-    
-    if [ ! -f "$task_file" ]; then
-        echo "[!] Task not found: $task_id"
-        exit 1
-    fi
-    
-    if try_lock "$task_id" "$agent"; then
-        # Move to doing
-        mv "$task_file" "$DOING_DIR/"
-        # Update task file with claim info
-        echo "" >> "$DOING_DIR/${task_id}.md"
-        echo "---" >> "$DOING_DIR/${task_id}.md"
-        echo "Claimed by: $agent at $(date -Iseconds)" >> "$DOING_DIR/${task_id}.md"
-        echo "[OK] Task claimed: $task_id"
-        echo "   Agent: $agent"
-        return 0
-    else
-        local owner
-        owner=$(lock_owner "$task_id")
-        echo "[!] Task already claimed by: $owner"
-        exit 1
-    fi
-}
-
-# Unclaim a task
-unclaim_task() {
-    local task_id="$1"
-    
-    if [ -z "$task_id" ]; then
-        echo "Usage: agent-task unclaim <task-id>"
-        exit 1
-    fi
-    
-    local doing_file="$DOING_DIR/${task_id}.md"
-    local todo_file="$TODO_DIR/${task_id}.md"
-    
-    if [ -f "$doing_file" ]; then
-        # Move back to todo
-        mv "$doing_file" "$TODO_DIR/"
-        unlock "$task_id"
-        echo "[<] Task unclaimed and returned to queue: $task_id"
-    elif [ -f "$todo_file" ]; then
-        unlock "$task_id"
-        echo "[UNLOCK] Lock released: $task_id"
-    else
-        echo "[!] Task not found: $task_id"
-        exit 1
-    fi
-}
-
-# Create new task
 create_task() {
     local title="$1"
     local assignee="${2:-any}"
     
     if [ -z "$title" ]; then
         echo "Usage: agent-task create <title> [assignee]"
+        echo "       agent-task create --project <path> <title> [assignee]"
         exit 1
     fi
     
-    local id
-    id=$(task_id "$title")
+    local id=$(task_id "$title")
     local file="$TODO_DIR/${id}.md"
     
     cat > "$file" << EOF
@@ -248,9 +342,61 @@ EOF
 
     echo "[CREATED] Task: $id"
     echo "   File: $file"
+    echo "   Queue: $QUEUE_TYPE"
 }
 
-# Complete a task
+claim_task() {
+    local task_id="$1"
+    local agent="$2"
+    
+    if [ -z "$task_id" ] || [ -z "$agent" ]; then
+        echo "Usage: agent-task claim <task-id> <agent-name>"
+        exit 1
+    fi
+    
+    # Find task in any queue
+    local location
+    location=$(find_task "$task_id") || {
+        echo "[!] Task not found in any queue: $task_id"
+        exit 1
+    }
+    
+    local queue_path="${location%:*}"
+    local state="${location#*:}"
+    
+    if [ "$state" != "todo" ]; then
+        echo "[!] Task is not available for claim (current state: $state)"
+        exit 1
+    fi
+    
+    local lock_dir="$queue_path/.locks"
+    mkdir -p "$lock_dir"
+    
+    local task_file="$queue_path/todo/${task_id}.md"
+    local doing_dir="$queue_path/doing"
+    local lockfile="$lock_dir/${task_id}.lock"
+    
+    if mkdir "$lockfile" 2>/dev/null; then
+        echo "$agent" > "$lockfile/owner"
+        echo "$(date -Iseconds)" > "$lockfile/claimed_at"
+        echo "$$" > "$lockfile/pid"
+        
+        mv "$task_file" "$doing_dir/"
+        echo "" >> "$doing_dir/${task_id}.md"
+        echo "---" >> "$doing_dir/${task_id}.md"
+        echo "Claimed by: $agent at $(date -Iseconds)" >> "$doing_dir/${task_id}.md"
+        
+        echo "[OK] Task claimed: $task_id"
+        echo "   Agent: $agent"
+        echo "   Queue: $queue_path"
+    else
+        local owner=""
+        [ -f "$lockfile/owner" ] && owner=$(cat "$lockfile/owner")
+        echo "[!] Task already claimed by: $owner"
+        exit 1
+    fi
+}
+
 complete_task() {
     local task_id="$1"
     
@@ -259,60 +405,84 @@ complete_task() {
         exit 1
     fi
     
-    local doing_file="$DOING_DIR/${task_id}.md"
+    local location
+    location=$(find_task "$task_id") || {
+        echo "[!] Task not found in any queue: $task_id"
+        exit 1
+    }
     
-    if [ ! -f "$doing_file" ]; then
-        echo "[!] Task not found in doing/: $task_id"
-        echo "   Task must be claimed first (in doing/ directory)"
+    local queue_path="${location%:*}"
+    local state="${location#*:}"
+    
+    if [ "$state" != "doing" ]; then
+        echo "[!] Task must be in 'doing' state to complete (current: $state)"
+        echo "   Claim it first: agent-task claim $task_id <agent>"
         exit 1
     fi
     
-    # Update task file
+    local doing_file="$queue_path/doing/${task_id}.md"
+    local done_dir="$queue_path/done"
+    local lock_dir="$queue_path/.locks"
+    
     echo "" >> "$doing_file"
     echo "---" >> "$doing_file"
     echo "Completed at: $(date -Iseconds)" >> "$doing_file"
-    
-    # Move to done
-    mv "$doing_file" "$DONE_DIR/"
-    unlock "$task_id"
+    mv "$doing_file" "$done_dir/"
+    rm -rf "$lock_dir/${task_id}.lock"
     
     echo "[OK] Task completed: $task_id"
+    echo "   Queue: $queue_path"
 }
 
-# Main command dispatcher
+# ============================================================================
+# MAIN
+# ============================================================================
+
+parse_args "$@"
+set -- "${ARGS[@]}"
+
 case "${1:-list}" in
-    claim)
-        shift
-        claim_task "$@"
-        ;;
-    unclaim)
-        shift
-        unclaim_task "$@"
+    list|ls)
+        list_tasks
         ;;
     create)
         shift
         create_task "$@"
         ;;
+    claim)
+        shift
+        claim_task "$@"
+        ;;
     complete)
         shift
         complete_task "$@"
         ;;
-    list|ls)
-        list_tasks
+    register-project)
+        shift
+        register_project "$@"
+        ;;
+    unregister-project)
+        shift
+        unregister_project "$@"
+        ;;
+    projects)
+        list_projects
         ;;
     *)
         echo "Usage: agent-task <command> [args]"
         echo ""
-        echo "Commands:"
-        echo "  list                    - Show all tasks"
-        echo "  create <title> [agent]  - Create new task"
-        echo "  claim <id> <agent>      - Claim a task (with file locking)"
-        echo "  unclaim <id>            - Release a task claim"
-        echo "  complete <id>           - Mark task as done"
+        echo "Task Commands:"
+        echo "  list                              - Show all tasks across all queues"
+        echo "  create <title> [agent]            - Create task in global queue"
+        echo "  create --project <path> <title>   - Create task in project queue"
+        echo "  claim <id> <agent>                - Claim a task (searches all queues)"
+        echo "  complete <id>                     - Complete a task (searches all queues)"
         echo ""
-        echo "Examples:"
-        echo "  agent-task create 'Fix auth bug' tester"
-        echo "  agent-task claim fix-auth-bug-1234567890 lead"
-        echo "  agent-task complete fix-auth-bug-1234567890"
+        echo "Project Management:"
+        echo "  register-project <path>           - Register project for task queues"
+        echo "  unregister-project <path>         - Unregister project"
+        echo "  projects                          - List registered projects"
+        echo ""
+        echo "Config file: ~/.config/kimi/inter-agent-comms/projects"
         ;;
 esac

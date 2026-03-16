@@ -1,0 +1,165 @@
+#!/bin/bash
+#
+# agent-setup-v3 - Onboarding script for Inter-Agent Messaging v3.0
+#
+# Usage: agent-setup-v3 [project-path...]
+#
+# Sets up:
+# - Symlinks to tools in ~/.local/bin/
+# - Global queue directory structure
+# - Config directory
+# - Registers specified projects
+
+set -e
+
+SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+GLOBAL_QUEUE="$HOME/.local/share/kimi/queue"
+CONFIG_DIR="$HOME/.config/kimi/inter-agent-messaging"
+BIN_DIR="$HOME/.local/bin"
+
+echo "=========================================="
+echo "Inter-Agent Messaging v3.0 Setup"
+echo "=========================================="
+echo ""
+
+# ============================================================================
+# CHECK PREREQUISITES
+# ============================================================================
+
+echo "📋 Checking prerequisites..."
+
+if ! command -v tmux &> /dev/null; then
+    echo "⚠️  WARNING: tmux not found. Install with:"
+    echo "   sudo apt install tmux  # Debian/Ubuntu"
+    echo "   brew install tmux      # macOS"
+    echo ""
+fi
+
+# ============================================================================
+# CREATE SYMLINKS
+# ============================================================================
+
+echo "🔗 Creating symlinks to tools..."
+
+mkdir -p "$BIN_DIR"
+
+# cm
+if [ -L "$BIN_DIR/cm" ]; then
+    echo "   ✓ cm already linked"
+elif [ -e "$BIN_DIR/cm" ]; then
+    echo "   ⚠️  cm exists (not a symlink). Backing up to cm.backup"
+    mv "$BIN_DIR/cm" "$BIN_DIR/cm.backup"
+    ln -s "$SKILL_DIR/scripts/cm" "$BIN_DIR/cm"
+    echo "   ✓ cm linked"
+else
+    ln -s "$SKILL_DIR/scripts/cm" "$BIN_DIR/cm"
+    echo "   ✓ cm linked"
+fi
+
+# agent-task
+if [ -L "$BIN_DIR/agent-task" ]; then
+    echo "   ✓ agent-task already linked"
+elif [ -e "$BIN_DIR/agent-task" ]; then
+    echo "   ⚠️  agent-task exists (not a symlink). Backing up to agent-task.backup"
+    mv "$BIN_DIR/agent-task" "$BIN_DIR/agent-task.backup"
+    ln -s "$SKILL_DIR/scripts/agent-task" "$BIN_DIR/agent-task"
+    echo "   ✓ agent-task linked"
+else
+    ln -s "$SKILL_DIR/scripts/agent-task" "$BIN_DIR/agent-task"
+    echo "   ✓ agent-task linked"
+fi
+
+# ============================================================================
+# SETUP DIRECTORIES
+# ============================================================================
+
+echo ""
+echo "📁 Creating directory structure..."
+
+# Global queue
+mkdir -p "$GLOBAL_QUEUE"/{todo,doing,done,.locks}
+echo "   ✓ Global queue: $GLOBAL_QUEUE"
+
+# Config directory
+mkdir -p "$CONFIG_DIR"
+echo "   ✓ Config directory: $CONFIG_DIR"
+
+# Init projects file if doesn't exist
+if [ ! -f "$CONFIG_DIR/projects" ]; then
+    echo "# Registered project paths for inter-agent-messaging" > "$CONFIG_DIR/projects"
+    echo "# One absolute path per line" >> "$CONFIG_DIR/projects"
+    echo "   ✓ Created projects registry"
+fi
+
+# ============================================================================
+# CHECK PATH
+# ============================================================================
+
+echo ""
+echo "🔍 Checking PATH..."
+
+if [[ ":$PATH:" == *":$BIN_DIR:"* ]]; then
+    echo "   ✓ $BIN_DIR is in PATH"
+else
+    echo "   ⚠️  $BIN_DIR is NOT in PATH"
+    echo ""
+    echo "   Add this to your ~/.bashrc or ~/.zshrc:"
+    echo "   export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo ""
+fi
+
+# ============================================================================
+# REGISTER PROJECTS
+# ============================================================================
+
+echo ""
+if [ $# -eq 0 ]; then
+    echo "💡 No projects specified for registration."
+    echo "   Register projects later with:"
+    echo "   agent-task register-project /path/to/project"
+else
+    echo "📂 Registering projects..."
+    for project_path in "$@"; do
+        if [ -d "$project_path" ]; then
+            agent-task register-project "$project_path"
+        else
+            echo "   ⚠️  Directory not found: $project_path"
+        fi
+    done
+fi
+
+# ============================================================================
+# VERIFY
+# ============================================================================
+
+echo ""
+echo "=========================================="
+echo "Setup Complete!"
+echo "=========================================="
+echo ""
+
+# Test commands
+echo "🧪 Testing..."
+
+if command -v cm &> /dev/null; then
+    echo "   ✓ cm is available"
+else
+    echo "   ⚠️  cm not found in PATH"
+fi
+
+if command -v agent-task &> /dev/null; then
+    echo "   ✓ agent-task is available"
+else
+    echo "   ⚠️  agent-task not found in PATH"
+fi
+
+echo ""
+echo "📖 Quick start:"
+echo "   cm                           # Check all messages"
+echo "   agent-task projects          # List registered projects"
+echo "   agent-task create 'Task' me  # Create a task"
+echo ""
+echo "📚 Documentation:"
+echo "   SKILL.md    - Complete skill guide"
+echo "   README.md   - Quick reference"
+echo ""
