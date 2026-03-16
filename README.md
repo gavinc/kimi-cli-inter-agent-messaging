@@ -50,7 +50,7 @@ git clone https://github.com/gavinc/kimi-cli-inter-agent-messaging.git \
 
 # 2. Run the setup script (does both skill + tools installation)
 cd ~/coding/skills/kimi-cli-inter-agent-messaging
-./scripts/agent-setup-v3 /path/to/your/project
+./scripts/agent-setup /path/to/your/project
 
 # 3. Symlink skill for Kimi discovery (manual step)
 mkdir -p ~/.config/agents/skills
@@ -100,7 +100,7 @@ The skill has **two separate installation locations**:
 │       ├── scripts/                                          │
 │       │   ├── cm                                            │
 │       │   ├── agent-task                                    │
-│       │   └── agent-setup-v3                                │
+│       │   └── agent-setup                                   │
 │       └── README.md                                         │
 └─────────────────────────────────────────────────────────────┘
                               ↓

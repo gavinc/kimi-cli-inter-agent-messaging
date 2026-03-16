@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# agent-setup-v3 - Onboarding script for Inter-Agent Messaging v3.0
+# agent-setup - Onboarding script for Inter-Agent Messaging
 #
-# Usage: agent-setup-v3 [project-path...]
+# Usage: agent-setup [project-path...]
 #
 # Performs TWO installations:
 # 1. SKILL INSTALLATION: Symlinks skill to ~/.config/agents/skills/ (for Kimi discovery)

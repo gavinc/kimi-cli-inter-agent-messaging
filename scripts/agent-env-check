@@ -1,0 +1,104 @@
+#!/bin/bash
+#
+# agent-env-check - Verify agent environment is set up correctly
+# Usage: agent-env-check
+#
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo "═══════════════════════════════════════════════════════════════"
+echo "  Agent Environment Check"
+echo "═══════════════════════════════════════════════════════════════"
+echo ""
+
+# Check if in tmux
+if [ -z "$TMUX" ]; then
+    echo -e "${RED}✗ Not in tmux session${NC}"
+    echo "  Multi-agent messaging requires tmux."
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Running in tmux"
+
+# Check AGENT_NAME
+if [ -z "$AGENT_NAME" ]; then
+    echo -e "${RED}✗ AGENT_NAME not set${NC}"
+    echo ""
+    echo "  Fix: export AGENT_NAME=\"<your-agent-name>\""
+    echo ""
+    echo "  For coding-agent:  export AGENT_NAME=\"coding-agent\""
+    echo "  For testing-agent: export AGENT_NAME=\"testing-agent\""
+    HAS_ERRORS=1
+else
+    echo -e "${GREEN}✓${NC} AGENT_NAME=$AGENT_NAME"
+fi
+
+# Check pane title
+PANE_TITLE=$(tmux display-message -p '#{pane_title}')
+if [ -z "$PANE_TITLE" ] || [ "$PANE_TITLE" = "bash" ] || [ "$PANE_TITLE" = "zsh" ]; then
+    echo -e "${YELLOW}⚠${NC} Pane title not set (currently: '$PANE_TITLE')"
+    echo ""
+    echo "  Fix: tmux select-pane -T \"kimi-<name>: $AGENT_NAME\""
+    echo ""
+    echo "  Example: tmux select-pane -T \"kimi-chad: coding-agent\""
+    HAS_WARNINGS=1
+else
+    echo -e "${GREEN}✓${NC} Pane title: $PANE_TITLE"
+fi
+
+# Check PATH
+if [[ ":$PATH:" != *":$PWD/.agents/bin:"* ]]; then
+    echo -e "${YELLOW}⚠${NC} .agents/bin not in PATH"
+    echo ""
+    echo "  Fix: export PATH=\"$PWD/.agents/bin:\$PATH\""
+    HAS_WARNINGS=1
+else
+    echo -e "${GREEN}✓${NC} .agents/bin in PATH"
+fi
+
+# Check dm command
+if ! command -v dm &> /dev/null; then
+    echo -e "${RED}✗ dm command not found${NC}"
+    echo "  Check that .agents/bin is in your PATH"
+    HAS_ERRORS=1
+else
+    echo -e "${GREEN}✓${NC} dm command available"
+fi
+
+# Check cm command
+if ! command -v cm &> /dev/null; then
+    echo -e "${RED}✗ cm command not found${NC}"
+    echo "  Check that .agents/bin is in your PATH"
+    HAS_ERRORS=1
+else
+    echo -e "${GREEN}✓${NC} cm command available"
+fi
+
+# Summary
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+
+if [ -n "$HAS_ERRORS" ]; then
+    echo -e "${RED}  ✗ ERRORS FOUND${NC}"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    echo "Fix the errors above before using inter-agent messaging."
+    exit 1
+elif [ -n "$HAS_WARNINGS" ]; then
+    echo -e "${YELLOW}  ⚠ WARNINGS${NC}"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    echo "Messaging will work, but fix warnings for best results."
+    exit 0
+else
+    echo -e "${GREEN}  ✓ ALL CHECKS PASSED${NC}"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    echo "Environment is correctly configured for inter-agent messaging."
+    exit 0
+fi

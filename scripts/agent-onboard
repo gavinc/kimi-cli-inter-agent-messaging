@@ -145,8 +145,8 @@ setup_agents() {
         # Set title
         tmux select-pane -T "$name"
         
-        # Start kimi with named session
-        tmux send-keys -t "$new_pane" "kimi --session $session_name -w ." Enter
+        # Start kimi with named session and AGENT_NAME set
+        tmux send-keys -t "$new_pane" "export AGENT_NAME=\"$name\" && kimi --session $session_name -w ." Enter
         
         echo -e "  ${GREEN}✓${NC} Created pane $new_pane: $name"
         echo -e "  ${GREEN}✓${NC} Session: $session_name"
