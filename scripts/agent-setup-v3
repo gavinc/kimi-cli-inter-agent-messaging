@@ -4,8 +4,11 @@
 #
 # Usage: agent-setup-v3 [project-path...]
 #
-# Sets up:
-# - Symlinks to tools in ~/.local/bin/
+# Performs TWO installations:
+# 1. SKILL INSTALLATION: Symlinks skill to ~/.config/agents/skills/ (for Kimi discovery)
+# 2. TOOLS INSTALLATION: Symlinks tools to ~/.local/bin/ (for execution)
+#
+# Also sets up:
 # - Global queue directory structure
 # - Config directory
 # - Registers specified projects
@@ -13,33 +16,48 @@
 set -e
 
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SKILL_NAME="inter-agent-messaging"
 GLOBAL_QUEUE="$HOME/.local/share/kimi/queue"
 CONFIG_DIR="$HOME/.config/kimi/inter-agent-messaging"
 BIN_DIR="$HOME/.local/bin"
+SKILLS_DIR="$HOME/.config/agents/skills"
 
 echo "=========================================="
 echo "Inter-Agent Messaging v3.0 Setup"
 echo "=========================================="
 echo ""
+echo "This script performs TWO installations:"
+echo "  1. Skill → ~/.config/agents/skills/ (Kimi discovery)"
+echo "  2. Tools → ~/.local/bin/ (execution)"
+echo ""
 
 # ============================================================================
-# CHECK PREREQUISITES
+# 1. SKILL INSTALLATION (for Kimi to discover)
 # ============================================================================
 
-echo "📋 Checking prerequisites..."
+echo "📦 Installing skill for Kimi discovery..."
 
-if ! command -v tmux &> /dev/null; then
-    echo "⚠️  WARNING: tmux not found. Install with:"
-    echo "   sudo apt install tmux  # Debian/Ubuntu"
-    echo "   brew install tmux      # macOS"
-    echo ""
+mkdir -p "$SKILLS_DIR"
+
+if [ -L "$SKILLS_DIR/$SKILL_NAME" ]; then
+    echo "   ✓ Skill already linked at $SKILLS_DIR/$SKILL_NAME"
+elif [ -e "$SKILLS_DIR/$SKILL_NAME" ]; then
+    echo "   ⚠️  Skill exists (not a symlink). Backing up..."
+    mv "$SKILLS_DIR/$SKILL_NAME" "$SKILLS_DIR/${SKILL_NAME}.backup.$(date +%s)"
+    ln -s "$SKILL_DIR" "$SKILLS_DIR/$SKILL_NAME"
+    echo "   ✓ Skill linked"
+else
+    ln -s "$SKILL_DIR" "$SKILLS_DIR/$SKILL_NAME"
+    echo "   ✓ Skill linked: $SKILLS_DIR/$SKILL_NAME"
+    echo "     → $SKILL_DIR"
 fi
 
 # ============================================================================
-# CREATE SYMLINKS
+# 2. TOOLS INSTALLATION (for execution)
 # ============================================================================
 
-echo "🔗 Creating symlinks to tools..."
+echo ""
+echo "🔧 Installing tools to ~/.local/bin/..."
 
 mkdir -p "$BIN_DIR"
 
@@ -60,7 +78,7 @@ fi
 if [ -L "$BIN_DIR/agent-task" ]; then
     echo "   ✓ agent-task already linked"
 elif [ -e "$BIN_DIR/agent-task" ]; then
-    echo "   ⚠️  agent-task exists (not a symlink). Backing up to agent-task.backup"
+    echo "   ⚠️  agent-task exists (not a symlink). Backing up..."
     mv "$BIN_DIR/agent-task" "$BIN_DIR/agent-task.backup"
     ln -s "$SKILL_DIR/scripts/agent-task" "$BIN_DIR/agent-task"
     echo "   ✓ agent-task linked"
@@ -70,7 +88,7 @@ else
 fi
 
 # ============================================================================
-# SETUP DIRECTORIES
+# 3. SETUP DIRECTORIES
 # ============================================================================
 
 echo ""
@@ -92,7 +110,7 @@ if [ ! -f "$CONFIG_DIR/projects" ]; then
 fi
 
 # ============================================================================
-# CHECK PATH
+# 4. CHECK PATH
 # ============================================================================
 
 echo ""
@@ -109,7 +127,7 @@ else
 fi
 
 # ============================================================================
-# REGISTER PROJECTS
+# 5. REGISTER PROJECTS
 # ============================================================================
 
 echo ""
@@ -121,6 +139,8 @@ else
     echo "📂 Registering projects..."
     for project_path in "$@"; do
         if [ -d "$project_path" ]; then
+            # Ensure PATH is set for this session
+            export PATH="$BIN_DIR:$PATH"
             agent-task register-project "$project_path"
         else
             echo "   ⚠️  Directory not found: $project_path"
@@ -129,7 +149,7 @@ else
 fi
 
 # ============================================================================
-# VERIFY
+# 6. VERIFY
 # ============================================================================
 
 echo ""
@@ -138,19 +158,34 @@ echo "Setup Complete!"
 echo "=========================================="
 echo ""
 
-# Test commands
-echo "🧪 Testing..."
-
-if command -v cm &> /dev/null; then
-    echo "   ✓ cm is available"
+# Test skill installation
+if [ -L "$SKILLS_DIR/$SKILL_NAME" ]; then
+    echo "✅ Skill installed: $SKILLS_DIR/$SKILL_NAME"
+    echo "   Kimi will discover this skill on next start"
 else
-    echo "   ⚠️  cm not found in PATH"
+    echo "⚠️  Skill installation issue"
 fi
 
-if command -v agent-task &> /dev/null; then
-    echo "   ✓ agent-task is available"
+# Test tools
+echo ""
+echo "🧪 Testing tools..."
+
+if [ -L "$BIN_DIR/cm" ] && [ -x "$BIN_DIR/cm" ]; then
+    echo "   ✓ cm installed"
 else
-    echo "   ⚠️  agent-task not found in PATH"
+    echo "   ⚠️  cm not properly installed"
+fi
+
+if [ -L "$BIN_DIR/agent-task" ] && [ -x "$BIN_DIR/agent-task" ]; then
+    echo "   ✓ agent-task installed"
+else
+    echo "   ⚠️  agent-task not properly installed"
+fi
+
+if [[ ":$PATH:" == *":$BIN_DIR:"* ]]; then
+    echo "   ✓ PATH configured"
+else
+    echo "   ⚠️  PATH not configured (see above)"
 fi
 
 echo ""
@@ -160,6 +195,6 @@ echo "   agent-task projects          # List registered projects"
 echo "   agent-task create 'Task' me  # Create a task"
 echo ""
 echo "📚 Documentation:"
-echo "   SKILL.md    - Complete skill guide"
+echo "   SKILL.md    - Complete skill guide (Kimi reads this)"
 echo "   README.md   - Quick reference"
 echo ""

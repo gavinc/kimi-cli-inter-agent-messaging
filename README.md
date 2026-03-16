@@ -16,114 +16,119 @@ Coordinate multiple AI agents with task queues that work identically from any di
 
 ```bash
 # Check messages from ANYWHERE (shows global + all projects)
-./scripts/cm
+cm
 
 # Register your project (one time)
-./scripts/agent-task register-project /path/to/your/project
+agent-task register-project /path/to/your/project
 
 # Create a global task
-./scripts/agent-task create "Research auth libraries" lead
+agent-task create "Research auth libraries" lead
 
 # Create a project task
-./scripts/agent-task create --project /path/to/project "Fix login bug" tester
+agent-task create --project /path/to/project "Fix login bug" tester
 
 # Claim a task (searches all queues)
-./scripts/agent-task claim task-id-1234567890 tester
+agent-task claim task-id-1234567890 tester
 
 # Complete a task
-./scripts/agent-task complete task-id-1234567890
+agent-task complete task-id-1234567890
 ```
 
 ## Installation
 
-### 1. Clone the Repository
+There are **two separate installations**:
+
+1. **Skill Installation** - Lets Kimi read the skill documentation
+2. **Tools Installation** - Makes `cm` and `agent-task` available in PATH
+
+### Option A: Automated Setup (Recommended)
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/gavinc/kimi-cli-inter-agent-messaging.git \
   ~/coding/skills/kimi-cli-inter-agent-messaging
-```
 
-### 2. Install for Kimi Skill System (Kimi reads SKILL.md)
+# 2. Run the setup script (does both skill + tools installation)
+cd ~/coding/skills/kimi-cli-inter-agent-messaging
+./scripts/agent-setup-v3 /path/to/your/project
 
-```bash
-# Create user skills directory
+# 3. Symlink skill for Kimi discovery (manual step)
 mkdir -p ~/.config/agents/skills
-
-# Symlink skill for Kimi to discover
 ln -s ~/coding/skills/kimi-cli-inter-agent-messaging \
   ~/.config/agents/skills/inter-agent-messaging
 ```
 
-Kimi will now discover this skill and can read `SKILL.md` for guidance.
-
-### 3. Install Tools for Execution (add to PATH)
+### Option B: Manual Setup
 
 ```bash
-# Create symlinks in ~/.local/bin
+# 1. Clone the repository
+git clone https://github.com/gavinc/kimi-cli-inter-agent-messaging.git \
+  ~/coding/skills/kimi-cli-inter-agent-messaging
+
+# 2. INSTALL SKILL (for Kimi to discover)
+mkdir -p ~/.config/agents/skills
+ln -s ~/coding/skills/kimi-cli-inter-agent-messaging \
+  ~/.config/agents/skills/inter-agent-messaging
+
+# 3. INSTALL TOOLS (for execution)
 mkdir -p ~/.local/bin
 ln -s ~/coding/skills/kimi-cli-inter-agent-messaging/scripts/cm ~/.local/bin/cm
 ln -s ~/coding/skills/kimi-cli-inter-agent-messaging/scripts/agent-task ~/.local/bin/agent-task
 
-# Ensure ~/.local/bin is in PATH
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Or use the setup script:
-```bash
-./scripts/agent-setup-v3 /path/to/project1 /path/to/project2
-```
-
-### 4. Setup Directories
-
-```bash
-# Create global queue
+# 4. SETUP DIRECTORIES
 mkdir -p ~/.local/share/kimi/queue/{todo,doing,done,.locks}
-
-# Create config directory
 mkdir -p ~/.config/kimi/inter-agent-messaging
-```
 
-### 5. Register Projects
+# 5. ENSURE PATH
+export PATH="$HOME/.local/bin:$PATH"  # Add to ~/.bashrc or ~/.zshrc
 
-```bash
-# Register your projects for automatic discovery
-agent-task register-project /path/to/project1
-agent-task register-project /path/to/project2
-
-# Verify
-agent-task projects
+# 6. REGISTER PROJECTS
+agent-task register-project /path/to/your/project
 ```
 
 ## Architecture
 
+The skill has **two separate installation locations**:
+
 ```
-~/.config/agents/skills/             # Kimi skill discovery
-└── inter-agent-messaging -> /path/to/repo
-    ├── SKILL.md                      # Skill documentation
-    ├── scripts/                      # Executable tools
-    │   ├── cm
-    │   ├── agent-task
-    │   └── agent-setup-v3
-    └── README.md
-
-~/.local/bin/                        # PATH executables (symlinks)
-├── cm -> /path/to/repo/scripts/cm
-└── agent-task -> /path/to/repo/scripts/agent-task
-
-~/.local/share/kimi/queue/           # Global task queue
-├── todo/
-├── doing/
-└── done/
-
-~/.config/kimi/inter-agent-messaging/
-└── projects                          # Registered project paths
-
-project-root/                         # Project-specific queue
-└── .agents/queue/
-    ├── todo/
-    ├── doing/
-    └── done/
+┌─────────────────────────────────────────────────────────────┐
+│  1. SKILL INSTALLATION (for Kimi to discover)               │
+├─────────────────────────────────────────────────────────────┤
+│  ~/.config/agents/skills/                                   │
+│  └── inter-agent-messaging -> ~/coding/skills/...           │
+│       ├── SKILL.md          ← Kimi reads this               │
+│       ├── scripts/                                          │
+│       │   ├── cm                                            │
+│       │   ├── agent-task                                    │
+│       │   └── agent-setup-v3                                │
+│       └── README.md                                         │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│  2. TOOLS INSTALLATION (for execution)                      │
+├─────────────────────────────────────────────────────────────┤
+│  ~/.local/bin/              ← Must be in PATH               │
+│  ├── cm -> ~/coding/skills/.../scripts/cm                   │
+│  └── agent-task -> ~/coding/skills/.../scripts/agent-task   │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│  DATA & CONFIG                                              │
+├─────────────────────────────────────────────────────────────┤
+│  ~/.local/share/kimi/queue/     ← Global task queue         │
+│  ~/.config/kimi/inter-agent-messaging/projects              │
+│                                 ← Registered projects       │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Why Two Installations?
+
+| Aspect | Skill Installation | Tools Installation |
+|--------|-------------------|-------------------|
+| **Purpose** | Kimi reads `SKILL.md` for guidance | Agents execute `cm` and `agent-task` |
+| **Location** | `~/.config/agents/skills/` | `~/.local/bin/` |
+| **Discovered by** | Kimi at startup | Shell PATH lookup |
+| **Required for** | Kimi to know about the skill | Agents to call tools |
 
 ## Commands
 
@@ -171,8 +176,31 @@ cm
 
 ## Documentation
 
-- **SKILL.md** - Complete skill documentation for Kimi
-- **This README** - Quick reference and installation
+- **SKILL.md** - Complete skill documentation for Kimi (read by Kimi)
+- **This README** - Installation and quick reference (for humans)
+
+## Troubleshooting
+
+### "cm: command not found"
+```bash
+# Tools not in PATH. Either:
+export PATH="$HOME/.local/bin:$PATH"
+# or run directly:
+~/.config/agents/skills/inter-agent-messaging/scripts/cm
+```
+
+### "Kimi doesn't know about the skill"
+```bash
+# Skill not installed for Kimi discovery. Run:
+mkdir -p ~/.config/agents/skills
+ln -s ~/coding/skills/kimi-cli-inter-agent-messaging \
+  ~/.config/agents/skills/inter-agent-messaging
+```
+
+### "No project queues registered"
+```bash
+agent-task register-project /path/to/your/project
+```
 
 ## License
 
