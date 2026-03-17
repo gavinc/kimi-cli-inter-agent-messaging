@@ -21,11 +21,19 @@ GLOBAL_QUEUE="$HOME/.local/share/kimi/queue"
 # Ensure global queue exists
 mkdir -p "$GLOBAL_QUEUE"/{todo,doing,done}
 
-# Helper: extract field from task file
+# Helper: extract field from task file (supports markdown **Field:** and YAML frontmatter)
 get_field() {
     local file="$1"
     local field="$2"
-    grep -m1 "^\*\*${field}:\*\*" "$file" 2>/dev/null | sed "s/\*\*${field}:\*\*//" | xargs || echo ""
+    # Try markdown format first: **Field:** value
+    local value=$(grep -m1 "^\*\*${field}:\*\*" "$file" 2>/dev/null | sed "s/\*\*${field}:\*\*//" | xargs)
+    if [ -n "$value" ]; then
+        echo "$value"
+        return
+    fi
+    # Try YAML frontmatter: field: value (lowercase, possibly indented)
+    local yaml_field=$(echo "$field" | tr '[:upper:]' '[:lower:]')
+    grep -m1 "^[ ]*${yaml_field}:" "$file" 2>/dev/null | sed "s/^[ ]*${yaml_field}://" | xargs
 }
 
 get_sender() { get_field "$1" "From"; }
