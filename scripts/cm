@@ -36,7 +36,14 @@ get_field() {
     grep -m1 "^[ ]*${yaml_field}:" "$file" 2>/dev/null | sed "s/^[ ]*${yaml_field}://" | xargs
 }
 
-get_sender() { get_field "$1" "From"; }
+get_sender() { 
+    local sender=$(get_field "$1" "From")
+    # Normalize: ensure @ prefix
+    if [ -n "$sender" ] && [[ ! "$sender" =~ ^@ ]]; then
+        sender="@$sender"
+    fi
+    echo "$sender"
+}
 get_priority() { get_field "$1" "Priority"; }
 
 # ============================================================================
