@@ -134,7 +134,7 @@ At decision nodes, I will output my choice:
 |---------|------|---------|
 | `cm` | Start, End | Check all queues |
 | `agent-task claim <id> chad` | Beginning | Claim task from todo |
-| `agent-task create --project /path "Test: [Feature]" testing-agent` | End | Create testing task |
+| `task-create --project /path "Test: [Feature]" testing-agent` | End | Create testing task |
 | `agent-task complete <id>` | End | Mark task done |
 | `~/.config/agents/skills/inter-agent-messaging/scripts/dm testing-agent` | End | **DM Tessa with next flow command** |
 | `tmux select-pane -T "chad | busy"` | Start | Set pane title |
@@ -184,7 +184,7 @@ Do you want me to:
 - ✅ Code implemented
 - ✅ Build passes
 - ⚠️  Testing task not created yet
-- Creating testing task: `agent-task create --project ~/coding/vercel-chat/monorepo "Test: User authentication" testing-agent`
+- Creating testing task: `task-create --project ~/coding/vercel-chat/monorepo "Test: User authentication" testing-agent`
 - ✅ Testing task created
 - ⚠️  Handoff not documented
 - Creating handoff in `.agents/handoffs/2025-03-16-user-authentication.md`

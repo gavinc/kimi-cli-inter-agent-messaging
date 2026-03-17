@@ -1,0 +1,110 @@
+#!/bin/bash
+#
+# task-create - Create task with ENFORCED format and location
+#
+# Enforces:
+# - Standard markdown format (not YAML)
+# - @agent/@user sender format
+# - Correct queue location (global vs project)
+# - Required fields: From, To, Created, Priority
+#
+# Usage: task-create --to <agent> --priority <high|medium|low> --project <path> "Title"
+
+set -e
+
+# Defaults
+TO_AGENT=""
+PRIORITY="medium"
+PROJECT_PATH=""
+TITLE=""
+SENDER="${AGENT_NAME:-user}"
+[[ ! "$SENDER" =~ ^@ ]] && SENDER="@$SENDER"
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --to)
+            TO_AGENT="$2"
+            shift 2
+            ;;
+        --priority)
+            PRIORITY="$2"
+            shift 2
+            ;;
+        --project)
+            PROJECT_PATH="$2"
+            shift 2
+            ;;
+        *)
+            TITLE="$1"
+            shift
+            ;;
+    esac
+done
+
+# Validation
+if [ -z "$TITLE" ]; then
+    echo "[!] ERROR: Title required"
+    echo "Usage: task-create --to <agent> --priority <high|medium|low> [--project <path>] \"Title\""
+    exit 1
+fi
+
+if [ -z "$TO_AGENT" ]; then
+    echo "[!] ERROR: --to <agent> required (who is this for?)"
+    exit 1
+fi
+
+# Normalize TO_AGENT
+[[ ! "$TO_AGENT" =~ ^@ ]] && TO_AGENT="@$TO_AGENT"
+
+# Determine queue location
+if [ -n "$PROJECT_PATH" ]; then
+    # Project-specific queue
+    QUEUE_ROOT="$PROJECT_PATH/.agents/queue"
+    QUEUE_TYPE="PROJECT ($(basename "$PROJECT_PATH"))"
+else
+    # Default to monorepo project queue (most common)
+    QUEUE_ROOT="$HOME/coding/vercel-chat/monorepo/.agents/queue"
+    QUEUE_TYPE="PROJECT (monorepo)"
+fi
+
+# Ensure directories exist
+mkdir -p "$QUEUE_ROOT"/{todo,doing,done,.locks}
+
+# Generate task ID
+ID="$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')-$(date +%s)"
+FILE="$QUEUE_ROOT/todo/${ID}.md"
+
+# Create task with ENFORCED format
+cat > "$FILE" << EOF
+# Task: $TITLE
+
+**ID:** $ID
+**Created:** $(date -Iseconds)
+**From:** $SENDER
+**To:** $TO_AGENT
+**Status:** pending
+**Priority:** $PRIORITY
+
+## Description
+[Describe what needs to be done]
+
+## Acceptance Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+- [ ] Criterion 3
+
+## Context
+[Any relevant background, links, or references]
+
+## Notes
+EOF
+
+echo "✅ Task created: $ID"
+echo "   File: $FILE"
+echo "   From: $SENDER"
+echo "   To: $TO_AGENT"
+echo "   Priority: $PRIORITY"
+echo "   Queue: $QUEUE_TYPE"
+echo ""
+echo "   Next: Recipient should run 'cm' to see the task"
