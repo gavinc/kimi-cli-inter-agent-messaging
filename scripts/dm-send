@@ -2,7 +2,8 @@
 #
 # dm-send - Send formatted direct message with enforced structure
 #
-# Enforces consistent @user/@agent format for all inter-agent communication
+# Enforces consistent @agent format for all inter-agent communication
+# REQUIRES AGENT_NAME to be set
 #
 # Usage: dm-send <recipient> "message"
 # Example: dm-send testing-agent "Task ready for testing"
@@ -19,12 +20,19 @@ if [ -z "$RECIPIENT" ] || [ -z "$MESSAGE" ]; then
     exit 1
 fi
 
+# Require AGENT_NAME to be set
+if [ -z "$AGENT_NAME" ]; then
+    echo "[!] ERROR: AGENT_NAME environment variable must be set"
+    echo "   Example: export AGENT_NAME=coding-agent"
+    echo "   Then run: dm-send testing-agent \"message\""
+    exit 1
+fi
+
 # Normalize recipient (remove @ if present, we'll add it back consistently)
 RECIPIENT="${RECIPIENT#@}"
 
 # Determine sender with enforced format
-SENDER="${AGENT_NAME:-user}"
-[[ ! "$SENDER" =~ ^@ ]] && SENDER="@$SENDER"
+SENDER="@$AGENT_NAME"
 
 # Format message with enforced structure
 FORMATTED_MSG="📬 From ${SENDER}: ${MESSAGE}"

@@ -4,8 +4,8 @@
 #
 # Enforces:
 # - Standard markdown format (not YAML)
-# - @agent/@user sender format
-# - Correct queue location (global vs project)
+# - @agent sender format (REQUIRES AGENT_NAME to be set)
+# - Correct queue location (project-specific)
 # - Required fields: From, To, Created, Priority
 #
 # Usage: task-create --to <agent> --priority <high|medium|low> --project <path> "Title"
@@ -17,8 +17,16 @@ TO_AGENT=""
 PRIORITY="medium"
 PROJECT_PATH=""
 TITLE=""
-SENDER="${AGENT_NAME:-user}"
-[[ ! "$SENDER" =~ ^@ ]] && SENDER="@$SENDER"
+
+# Require AGENT_NAME to be set
+if [ -z "$AGENT_NAME" ]; then
+    echo "[!] ERROR: AGENT_NAME environment variable must be set"
+    echo "   Example: export AGENT_NAME=coding-agent"
+    echo "   Then run: task-create --to testing-agent --priority high \"Task title\""
+    exit 1
+fi
+
+SENDER="@$AGENT_NAME"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
