@@ -46,7 +46,7 @@ flowchart TD
     H -->|Fail| J[Record screenshots/videos of failures]
     J --> I
     I --> K[Complete task: agent-task complete <id>]
-    K --> L[DM Chad: scripts/dm coding-agent "📬 Test complete. Handoff ready. /flow:chad-flow review test results"]
+    K --> L[DM Chad: ~/.config/agents/skills/inter-agent-messaging/scripts/dm coding-agent "📬 Test complete. Handoff ready. /flow:chad-flow review test results"]
     L --> M[Verify all 4 requirements met]
     M --> N{User has more tests?}
     N -->|Yes| C
@@ -61,7 +61,7 @@ flowchart TD
 | `cm` | Start, End | Check all queues |
 | `agent-task claim <id> tessa` | Beginning | Claim task from todo |
 | `agent-task complete <id>` | End | Mark task done |
-| `scripts/dm coding-agent "message"` | End | **DM Chad with test results and next flow command** |
+| `~/.config/agents/skills/inter-agent-messaging/scripts/dm coding-agent "message"` | End | **DM Chad with test results and next flow command** |
 | `npm run test:e2e` | During | Execute tests |
 | `tmux select-pane -T "tessa | busy"` | Start | Set pane title |
 | `tmux select-pane -T "tessa | idle | 📬N"` | End | Set idle title |
@@ -128,7 +128,10 @@ Completing task: agent-task complete test-v3-inter-agent-messaging-1773671002
 
 **Me (step 4 - notify):** Sending DM to Chad:
 ```bash
-scripts/dm coding-agent "📬 Test complete: v3.0 deterministic behavior. Handoff ready in monorepo/.agents/handoffs/testing-agent/"
+**Me (step 4 - notify):** Sending DM to Chad:
+```bash
+~/.config/agents/skills/inter-agent-messaging/scripts/dm coding-agent "📬 Test complete: v3.0 deterministic behavior. Handoff ready in monorepo/.agents/handoffs/testing-agent/"
+```
 ```
 
 Verifying completion:

@@ -46,7 +46,7 @@ flowchart TD
     I --> J[Verify: Task moved to done?]
     J -->|No| K[Move task to done/ or ask user about incomplete work]
     J -->|Yes| L[Verify: Testing task created for Tessa?]
-    L -->|No| M[Create testing task and DM Tessa: scripts/dm testing-agent]
+    L -->|No| M[Create testing task and DM Tessa: ~/.config/agents/skills/inter-agent-messaging/scripts/dm testing-agent]
     L -->|Yes| N[Verify: Handoff documented?]
     M --> N
     K --> N
@@ -136,7 +136,7 @@ At decision nodes, I will output my choice:
 | `agent-task claim <id> chad` | Beginning | Claim task from todo |
 | `agent-task create --project /path "Test: [Feature]" testing-agent` | End | Create testing task |
 | `agent-task complete <id>` | End | Mark task done |
-| `scripts/dm testing-agent` | End | **DM Tessa with next flow command** |
+| `~/.config/agents/skills/inter-agent-messaging/scripts/dm testing-agent` | End | **DM Tessa with next flow command** |
 | `tmux select-pane -T "chad | busy"` | Start | Set pane title |
 | `tmux select-pane -T "chad | idle | 📬N"` | End | Set idle title |
 
