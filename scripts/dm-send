@@ -1,0 +1,54 @@
+#!/bin/bash
+#
+# dm-send - Send formatted direct message with enforced structure
+#
+# Enforces consistent @user/@agent format for all inter-agent communication
+#
+# Usage: dm-send <recipient> "message"
+# Example: dm-send testing-agent "Task ready for testing"
+
+set -e
+
+RECIPIENT="$1"
+shift
+MESSAGE="$*"
+
+if [ -z "$RECIPIENT" ] || [ -z "$MESSAGE" ]; then
+    echo "Usage: dm-send <recipient> \"message\""
+    echo "Example: dm-send testing-agent \"Task complete. Handoff ready.\""
+    exit 1
+fi
+
+# Normalize recipient (remove @ if present, we'll add it back consistently)
+RECIPIENT="${RECIPIENT#@}"
+
+# Determine sender with enforced format
+SENDER="${AGENT_NAME:-user}"
+[[ ! "$SENDER" =~ ^@ ]] && SENDER="@$SENDER"
+
+# Format message with enforced structure
+FORMATTED_MSG="📬 From ${SENDER}: ${MESSAGE}"
+
+# Find target pane
+PANE_INFO=$(tmux list-panes -a -F '#{pane_id} #{pane_title}' 2>/dev/null | \
+    grep -E ": ${RECIPIENT}$" | head -1 || true)
+
+if [ -z "$PANE_INFO" ]; then
+    # Try alternative pane title patterns
+    PANE_INFO=$(tmux list-panes -a -F '#{pane_id}: #{pane_title}' 2>/dev/null | \
+        grep -iE "${RECIPIENT}" | head -1 || true)
+fi
+
+if [ -z "$PANE_INFO" ]; then
+    echo "[!] Agent '@${RECIPIENT}' not found"
+    echo "Available panes:"
+    tmux list-panes -a -F '  #{pane_title}' 2>/dev/null | grep -v "^$" || true
+    exit 1
+fi
+
+PANE_ID=$(echo "$PANE_INFO" | awk '{print $1}')
+
+# Send formatted message
+tmux send-keys -t "$PANE_ID" "$FORMATTED_MSG" Enter
+
+echo "✅ Sent to @${RECIPIENT}: ${FORMATTED_MSG}"
