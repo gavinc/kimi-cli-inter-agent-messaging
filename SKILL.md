@@ -19,7 +19,24 @@ This skill provides deterministic task queue management for coordinating multipl
   - Requires `AGENT_NAME` environment variable
 - `dm-send` - **Enforced** direct messages (📬 From @agent: format)
   - Requires `AGENT_NAME` environment variable
+- `agent-session-review` - Shows queue status before idle/exit
+  - Observation only, no enforcement
+  - Auto-runs on shell exit when hooks enabled
 - `agent-setup` - Installation script
+
+### Session Hooks (Optional)
+
+Source the hooks for automatic session review on exit:
+
+```bash
+# Add to .bashrc
+source ~/.config/agents/skills/inter-agent-messaging/agent-hooks.sh
+```
+
+This enables:
+- **Exit review**: Shows tasks in progress when shell exits
+- **`ar` alias**: Run `ar` anytime to see current queue state
+- Non-blocking observation - just visibility, no enforcement
 
 ### Flow Skills (Enforced Workflows)
 

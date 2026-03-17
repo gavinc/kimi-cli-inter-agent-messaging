@@ -1,0 +1,127 @@
+#!/bin/bash
+# Agent Session Review - Part of inter-agent-messaging skill
+# Shows queue state before idle/exit - OBSERVATION ONLY, no enforcement
+#
+# Usage: agent-session-review
+#        (auto-runs on EXIT when sourced via agent-hooks.sh)
+
+# Check AGENT_NAME
+if [ -z "$AGENT_NAME" ]; then
+    echo "[!] AGENT_NAME not set. Set it to your agent name (e.g., coding-agent)"
+    exit 1
+fi
+
+# Colors
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo ""
+echo "┌──────────────────────────────────────────────────────────┐"
+printf "│  📋 Session Review: %-36s │\n" "$AGENT_NAME"
+echo "├──────────────────────────────────────────────────────────┤"
+
+# Global queue
+GLOBAL_DOING_DIR="$HOME/.agents/queue/doing"
+GLOBAL_TODO_DIR="$HOME/.agents/queue/todo"
+
+if [ -d "$GLOBAL_DOING_DIR" ] && [ "$(ls -A $GLOBAL_DOING_DIR/*.md 2>/dev/null)" ]; then
+    echo "│  🌐 Global Queue:"
+    for task in "$GLOBAL_DOING_DIR"/*.md; do
+        [ -f "$task" ] || continue
+        TASK_NAME=$(basename "$task" .md | cut -c1-44)
+        printf "│     ${YELLOW}🔨 %-50s${NC} │\n" "$TASK_NAME"
+    done
+fi
+
+# Project queues (check registered projects)
+PROJECTS_FILE="$HOME/.config/kimi/inter-agent-messaging/projects"
+if [ -f "$PROJECTS_FILE" ]; then
+    while IFS= read -r project_path; do
+        [ -z "$project_path" ] && continue
+        
+        DOING_DIR="$project_path/.agents/queue/doing"
+        TODO_DIR="$project_path/.agents/queue/todo"
+        
+        if [ -d "$DOING_DIR" ] && [ "$(ls -A $DOING_DIR/*.md 2>/dev/null)" ]; then
+            PROJECT_NAME=$(basename "$project_path")
+            printf "│  📂 %-52s │\n" "$PROJECT_NAME:"
+            for task in "$DOING_DIR"/*.md; do
+                [ -f "$task" ] || continue
+                TASK_NAME=$(basename "$task" .md | cut -c1-44)
+                printf "│     ${YELLOW}🔨 %-50s${NC} │\n" "$TASK_NAME"
+            done
+        fi
+    done < "$PROJECTS_FILE"
+fi
+
+# Also check current directory
+LOCAL_DOING="./.agents/queue/doing"
+if [ -d "$LOCAL_DOING" ] && [ "$(ls -A $LOCAL_DOING/*.md 2>/dev/null)" ]; then
+    # Check if we already showed this one
+    CURRENT_PROJECT=$(pwd)
+    ALREADY_SHOWN=0
+    if [ -f "$PROJECTS_FILE" ]; then
+        while IFS= read -r project_path; do
+            if [ "$project_path" = "$CURRENT_PROJECT" ]; then
+                ALREADY_SHOWN=1
+                break
+            fi
+        done < "$PROJECTS_FILE"
+    fi
+    
+    if [ "$ALREADY_SHOWN" -eq 0 ]; then
+        PROJECT_NAME=$(basename "$CURRENT_PROJECT")
+        printf "│  📂 %-52s │\n" "$PROJECT_NAME:"
+        for task in "$LOCAL_DOING"/*.md; do
+            [ -f "$task" ] || continue
+            TASK_NAME=$(basename "$task" .md | cut -c1-44)
+            printf "│     ${YELLOW}🔨 %-50s${NC} │\n" "$TASK_NAME"
+        done
+    fi
+fi
+
+# Summary counts
+count_tasks() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        ls "$dir"/*.md 2>/dev/null | wc -l
+    else
+        echo 0
+    fi
+}
+
+TOTAL_DOING=0
+TOTAL_TODO=0
+
+TOTAL_DOING=$((TOTAL_DOING + $(count_tasks "$GLOBAL_DOING_DIR")))
+TOTAL_TODO=$((TOTAL_TODO + $(count_tasks "$GLOBAL_TODO_DIR")))
+
+if [ -f "$PROJECTS_FILE" ]; then
+    while IFS= read -r project_path; do
+        [ -z "$project_path" ] && continue
+        TOTAL_DOING=$((TOTAL_DOING + $(count_tasks "$project_path/.agents/queue/doing")))
+        TOTAL_TODO=$((TOTAL_TODO + $(count_tasks "$project_path/.agents/queue/todo")))
+    done < "$PROJECTS_FILE"
+fi
+
+echo "│                                                          │"
+
+if [ "$TOTAL_DOING" -gt 0 ]; then
+    printf "│  ${YELLOW}⚠️  You have %d task(s) in progress${NC}%-25s │\n" "$TOTAL_DOING" ""
+    echo "│     Consider completing or handing off before idle       │"
+else
+    printf "│  ${GREEN}✅ All tasks completed${NC}%-33s │\n" ""
+fi
+
+if [ "$TOTAL_TODO" -gt 0 ]; then
+    printf "│  ${BLUE}📬 %d task(s) waiting${NC}%-34s │\n" "$TOTAL_TODO" ""
+fi
+
+echo "│                                                          │"
+echo "│  Run 'cm' for full queue details                         │"
+echo "└──────────────────────────────────────────────────────────┘"
+echo ""
