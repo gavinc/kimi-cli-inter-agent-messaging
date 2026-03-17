@@ -14,7 +14,9 @@ This skill provides deterministic task queue management for coordinating multipl
 
 ### Tools
 - `cm` - Check messages (shows all queues from any directory)
-- `agent-task` - Task management with file locking
+- `agent-task` - Task management with file locking (legacy)
+- `task-create` - **Enforced** task creation (standard markdown format, @agent/@user)
+- `dm-send` - **Enforced** direct messages (📬 From @sender: format)
 - `agent-setup` - Installation script
 
 ### Flow Skills (Enforced Workflows)

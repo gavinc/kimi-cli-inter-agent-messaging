@@ -21,14 +21,14 @@ cm
 # Register your project (one time)
 agent-task register-project /path/to/your/project
 
-# Create a global task
-agent-task create "Research auth libraries" lead
+# Create task with ENFORCED format (recommended)
+task-create --to testing-agent --priority high "Test: authentication flow"
 
-# Create a project task
-agent-task create --project /path/to/project "Fix login bug" tester
+# Send DM with ENFORCED format
+dm-send testing-agent "Task ready. Run tests."
 
 # Claim a task (searches all queues)
-agent-task claim task-id-1234567890 tester
+agent-task claim task-id-1234567890 coding-agent
 
 # Complete a task
 agent-task complete task-id-1234567890
@@ -123,6 +123,8 @@ ln -s ~/coding/skills/kimi-cli-inter-agent-messaging \
 mkdir -p ~/.local/bin
 ln -s ~/coding/skills/kimi-cli-inter-agent-messaging/scripts/cm ~/.local/bin/cm
 ln -s ~/coding/skills/kimi-cli-inter-agent-messaging/scripts/agent-task ~/.local/bin/agent-task
+ln -s ~/coding/skills/kimi-cli-inter-agent-messaging/scripts/task-create ~/.local/bin/task-create
+ln -s ~/coding/skills/kimi-cli-inter-agent-messaging/scripts/dm-send ~/.local/bin/dm-send
 
 # 4. SETUP DIRECTORIES
 mkdir -p ~/.local/share/kimi/queue/{todo,doing,done,.locks}
@@ -149,6 +151,8 @@ The skill has **two separate installation locations**:
 │       ├── scripts/                                          │
 │       │   ├── cm                                            │
 │       │   ├── agent-task                                    │
+│       │   ├── task-create                                   │
+│       │   ├── dm-send                                       │
 │       │   └── agent-setup                                   │
 │       └── README.md                                         │
 └─────────────────────────────────────────────────────────────┘
@@ -158,7 +162,9 @@ The skill has **two separate installation locations**:
 ├─────────────────────────────────────────────────────────────┤
 │  ~/.local/bin/              ← Must be in PATH               │
 │  ├── cm -> ~/coding/skills/.../scripts/cm                   │
-│  └── agent-task -> ~/coding/skills/.../scripts/agent-task   │
+│  ├── agent-task -> ~/coding/skills/.../scripts/agent-task   │
+│  ├── task-create -> ~/coding/skills/.../scripts/task-create │
+│  └── dm-send -> ~/coding/skills/.../scripts/dm-send         │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
