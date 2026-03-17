@@ -1,6 +1,6 @@
 ---
 name: tessa-flow
-description: Enforced workflow for Tessa (testing-agent). Automatically runs queue checks at start and end, enforces test documentation and handoffs. Use /flow:tessa-flow to invoke Tessa with compliance enforcement.
+description: Enforced workflow for Chad (coding-agent). Automatically runs queue checks at start and end of every session. Use /flow:chad-flow to invoke Chad with compliance enforcement.
 type: flow
 metadata:
   author: gavinc
@@ -13,7 +13,7 @@ This flow skill enforces Tessa's work protocol by automating queue checks and ma
 
 ## When to Use
 
-Use `/flow:tessa-flow` instead of `kimi-tessa` when you want:
+Use /flow:tessa-flow instead of kimi-tessa when you want:
 - Automatic queue status check on start
 - Mandatory test documentation
 - Enforced handoff to Chad
@@ -46,7 +46,7 @@ flowchart TD
     H -->|Fail| J[Record screenshots/videos of failures]
     J --> I
     I --> K[Complete task: agent-task complete <id>]
-    K --> L[DM @coding-agent: "📬 Test complete. Handoff ready."]
+    K --> L[DM Chad: scripts/dm coding-agent "📬 Test complete. Handoff ready. /flow:chad-flow review test results"]
     L --> M[Verify all 4 requirements met]
     M --> N{User has more tests?}
     N -->|Yes| C
@@ -54,12 +54,24 @@ flowchart TD
     O --> P([END])
 ```
 
+## Commands Used
+
+| Command | When | Purpose |
+|---------|------|---------|
+| `cm` | Start, End | Check all queues |
+| `agent-task claim <id> tessa` | Beginning | Claim task from todo |
+| `agent-task complete <id>` | End | Mark task done |
+| `scripts/dm coding-agent "message"` | End | **DM Chad with test results and next flow command** |
+| `npm run test:e2e` | During | Execute tests |
+| `tmux select-pane -T "tessa | busy"` | Start | Set pane title |
+| `tmux select-pane -T "tessa | idle | 📬N"` | End | Set idle title |
+
 ## Mandatory Verification (End of Session)
 
 Before ending, Tessa MUST verify:
 
-1. ✅ Task file moved to `done/` (via `agent-task complete`)
-2. ✅ Handoff file exists at `handoffs/testing-agent/YYYY-MM-DD-[task-name].md`
+1. ✅ Task file moved to done/ (via agent-task complete)
+2. ✅ Handoff file exists at handoffs/testing-agent/YYYY-MM-DD-[task-name].md
 3. ✅ DM sent to @coding-agent
 4. ✅ Pane title updated to "tessa | idle"
 
@@ -92,29 +104,32 @@ With this flow:
 
 ## Example Session
 
-**User:** `/flow:tessa-flow`
+**User:** /flow:tessa-flow
 
-**Me (step 1 - BEGIN):** Running `cm`...
+**Me (step 1 - BEGIN):** Running cm...
 [cm output]
 📂 monorepo
 📬 TODO: test-v3-inter-agent-messaging
 🔨 DOING: (none)
 
-Claiming task: `agent-task claim test-v3-inter-agent-messaging-1773671002 tessa`
+Claiming task: agent-task claim test-v3-inter-agent-messaging-1773671002 tessa
 ✅ Task claimed.
 
-**Me (step 2 - execute):** Running tests: `npm run test:e2e`
+**Me (step 2 - execute):** Running tests: npm run test:e2e
 [test output]
 ✅ 5 passed, 0 failed
 
-**Me (step 3 - document):** Creating handoff in `handoffs/testing-agent/2025-03-16-test-v3-inter-agent-messaging.md`
+**Me (step 3 - document):** Creating handoff in handoffs/testing-agent/2025-03-16-test-v3-inter-agent-messaging.md
 [handoff content]
 ✅ Handoff created.
 
-Completing task: `agent-task complete test-v3-inter-agent-messaging-1773671002`
+Completing task: agent-task complete test-v3-inter-agent-messaging-1773671002
 ✅ Task complete.
 
-**Me (step 4 - notify):** DM @coding-agent: "📬 Test complete: v3.0 deterministic behavior. Handoff ready in monorepo/.agents/handoffs/testing-agent/"
+**Me (step 4 - notify):** Sending DM to Chad:
+```bash
+scripts/dm coding-agent "📬 Test complete: v3.0 deterministic behavior. Handoff ready in monorepo/.agents/handoffs/testing-agent/"
+```
 
 Verifying completion:
 - ✅ Task in done/
@@ -124,6 +139,6 @@ Verifying completion:
 
 **Me (step 5 - END):** Testing session complete. More work? (yes/no)
 
-**User:** `no`
+**User:** no
 
-**Me:** [END] Session ended. Run `/flow:tessa-flow` for next testing session.
+**Me:** [END] Session ended. Run /flow:tessa-flow for next testing session.
