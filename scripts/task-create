@@ -8,7 +8,12 @@
 # - Correct queue location (project-specific)
 # - Required fields: From, To, Created, Priority
 #
-# Usage: task-create --to <agent> --priority <high|medium|low> --project <path> "Title"
+# Usage: 
+#   task-create --to <agent> --priority <high|medium|low> --project <path> "Title"
+#   task-create --to <agent> --priority high "Title" << 'EOF'
+#   ## Description
+#   Multi-line content here
+#   EOF
 
 set -e
 
@@ -17,6 +22,7 @@ TO_AGENT=""
 PRIORITY="medium"
 PROJECT_PATH=""
 TITLE=""
+CONTENT=""
 
 # Require AGENT_NAME to be set
 if [ -z "$AGENT_NAME" ]; then
@@ -54,7 +60,15 @@ done
 if [ -z "$TITLE" ]; then
     echo "[!] ERROR: Title required"
     echo "Usage: task-create --to <agent> --priority <high|medium|low> [--project <path>] \"Title\""
+    echo "       task-create --to <agent> --priority high \"Title\" << 'EOF'"
+    echo "       ## Your content here"
+    echo "       EOF"
     exit 1
+fi
+
+# Read from stdin if provided (heredoc or pipe)
+if [ ! -t 0 ]; then
+    CONTENT=$(cat)
 fi
 
 if [ -z "$TO_AGENT" ]; then
@@ -84,7 +98,23 @@ ID="$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-'
 FILE="$QUEUE_ROOT/todo/${ID}.md"
 
 # Create task with ENFORCED format
-cat > "$FILE" << EOF
+if [ -n "$CONTENT" ]; then
+    # Use provided content (from heredoc/pipe)
+    cat > "$FILE" << EOF
+# Task: $TITLE
+
+**ID:** $ID
+**Created:** $(date -Iseconds)
+**From:** $SENDER
+**To:** $TO_AGENT
+**Status:** pending
+**Priority:** $PRIORITY
+
+$CONTENT
+EOF
+else
+    # Use default template
+    cat > "$FILE" << EOF
 # Task: $TITLE
 
 **ID:** $ID
@@ -107,6 +137,7 @@ cat > "$FILE" << EOF
 
 ## Notes
 EOF
+fi
 
 echo "✅ Task created: $ID"
 echo "   File: $FILE"
