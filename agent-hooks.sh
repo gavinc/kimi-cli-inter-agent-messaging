@@ -18,7 +18,7 @@ if [[ ":$PATH:" != *":$SKILL_SCRIPTS:"* ]]; then
 fi
 
 # Cooldown: only show review every 5 minutes
-AGENT_REVIEW_COOLDOWN=300  # seconds
+AGENT_REVIEW_COOLDOWN=180  # seconds
 
 agent_exit_review() {
     local last_review_file="/tmp/.agent-review-${AGENT_NAME}-$(whoami)"
